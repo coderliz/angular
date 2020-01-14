@@ -6,9 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {SecurityContext} from '@angular/core';
 import {ArgumentType, BindingFlags, NodeCheckFn, NodeFlags, Services, ViewData, ViewFlags, ViewState, asElementData, directiveDef, elementDef, rootRenderNodes} from '@angular/core/src/view/index';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
 
 import {callMostRecentEventListenerHandler, compViewDef, createAndGetRootNodes, createRootView, isBrowser, recordNodeToRemove} from './helper';
 
@@ -18,9 +18,9 @@ import {callMostRecentEventListenerHandler, compViewDef, createAndGetRootNodes, 
  * We map addEventListener to the Zones internal name. This is because we want to be fast
  * and bypass the zone bookkeeping. We know that we can do the bookkeeping faster.
  */
-const addEventListener = '__zone_symbol__addEventListener';
+const addEventListener = 'addEventListener';
 
-export function main() {
+{
   describe(`Component Views`, () => {
     it('should create and attach component views', () => {
       let instance: AComp = undefined !;
@@ -42,8 +42,8 @@ export function main() {
       expect(compView.context).toBe(instance);
       expect(compView.component).toBe(instance);
 
-      const compRootEl = getDOM().childNodes(rootNodes[0])[0];
-      expect(getDOM().nodeName(compRootEl).toLowerCase()).toBe('span');
+      const compRootEl = rootNodes[0].childNodes[0];
+      expect(compRootEl.nodeName.toLowerCase()).toBe('span');
     });
 
     if (isBrowser()) {
@@ -132,7 +132,38 @@ export function main() {
         value = 'v2';
         expect(() => Services.checkNoChangesView(view))
             .toThrowError(
-                `ExpressionChangedAfterItHasBeenCheckedError: Expression has changed after it was checked. Previous value: 'v1'. Current value: 'v2'.`);
+                `ExpressionChangedAfterItHasBeenCheckedError: Expression has changed after it was checked. Previous value: 'a: v1'. Current value: 'a: v2'.`);
+      });
+
+      // fixes https://github.com/angular/angular/issues/21788
+      it('report the binding name when an expression changes after it has been checked', () => {
+        let value: any;
+        class AComp {}
+
+        const update =
+            jasmine.createSpy('updater').and.callFake((check: NodeCheckFn, view: ViewData) => {
+              check(view, 0, ArgumentType.Inline, 'const', 'const', value);
+            });
+
+        const {view, rootNodes} = createAndGetRootNodes(
+          compViewDef([
+            elementDef(0, NodeFlags.None, null, null, 1, 'div', null, null, null, null, () => compViewDef([
+                elementDef(0, NodeFlags.None, null, null, 0, 'span', null, [
+                 [BindingFlags.TypeElementAttribute, 'p1', SecurityContext.NONE],
+                [BindingFlags.TypeElementAttribute, 'p2', SecurityContext.NONE],
+                [BindingFlags.TypeElementAttribute, 'p3', SecurityContext.NONE],
+              ]),
+              ], null, update)
+            ),
+            directiveDef(1, NodeFlags.Component, null, 0, AComp, []),
+          ]));
+
+        value = 'v1';
+        Services.checkAndUpdateView(view);
+        value = 'v2';
+        expect(() => Services.checkNoChangesView(view))
+            .toThrowError(
+                `ExpressionChangedAfterItHasBeenCheckedError: Expression has changed after it was checked. Previous value: 'p3: v1'. Current value: 'p3: v2'.`);
       });
 
       it('should support detaching and attaching component views for dirty checking', () => {

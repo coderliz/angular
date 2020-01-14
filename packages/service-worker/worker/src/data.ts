@@ -8,6 +8,7 @@
 
 import {Adapter, Context} from './adapter';
 import {Database, Table} from './database';
+import {DebugHandler} from './debug';
 import {DataGroupConfig} from './manifest';
 
 /**
@@ -99,25 +100,7 @@ class LruList {
     }
 
     const url = this.state.tail;
-
-    // Special case if this is the last node.
-    if (this.state.head === this.state.tail) {
-      // When removing the last node, both head and tail pointers become null.
-      this.state.head = null;
-      this.state.tail = null;
-    } else {
-      // Normal node removal. All that needs to be done is to clear the next pointer
-      // of the previous node and make it the new tail.
-      const block = this.state.map[url] !;
-      const previous = this.state.map[block.previous !] !;
-      this.state.tail = previous.url;
-      previous.next = block.next;
-    }
-
-    // In any case, this URL is no longer tracked, so remove it from the count and the
-    // map of tracked URLs.
-    delete this.state.map[url];
-    this.state.count--;
+    this.remove(url);
 
     // This URL has been successfully evicted.
     return url;
@@ -145,6 +128,8 @@ class LruList {
       const next = this.state.map[node.next !] !;
       next.previous = null;
       this.state.head = next.url;
+      node.next = null;
+      delete this.state.map[url];
       this.state.count--;
       return true;
     }
@@ -167,6 +152,9 @@ class LruList {
       this.state.tail = node.previous !;
     }
 
+    node.next = null;
+    node.previous = null;
+    delete this.state.map[url];
     // Count the removal.
     this.state.count--;
 
@@ -256,7 +244,8 @@ export class DataGroup {
 
   constructor(
       private scope: ServiceWorkerGlobalScope, private adapter: Adapter,
-      private config: DataGroupConfig, private db: Database, private prefix: string) {
+      private config: DataGroupConfig, private db: Database, private debugHandler: DebugHandler,
+      private prefix: string) {
     this.patterns = this.config.patterns.map(pattern => new RegExp(pattern));
     this.cache = this.scope.caches.open(`${this.prefix}:dynamic:${this.config.name}:cache`);
     this.lruTable = this.db.open(`${this.prefix}:dynamic:${this.config.name}:lru`);
@@ -271,7 +260,7 @@ export class DataGroup {
       const table = await this.lruTable;
       try {
         this._lru = new LruList(await table.read<LruState>('lru'));
-      } catch (e) {
+      } catch {
         this._lru = new LruList();
       }
     }
@@ -286,7 +275,15 @@ export class DataGroup {
       return;
     }
     const table = await this.lruTable;
-    return table.write('lru', this._lru !.state);
+    try {
+      return table.write('lru', this._lru !.state);
+    } catch (err) {
+      // Writing lru cache table failed. This could be a result of a full storage.
+      // Continue serving clients as usual.
+      this.debugHandler.log(err, `DataGroup(${this.config.name}@${this.config.version}).syncLru()`);
+      // TODO: Better detect/handle full storage; e.g. using
+      // [navigator.storage](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorStorage/storage).
+    }
   }
 
   /**
@@ -347,7 +344,7 @@ export class DataGroup {
       res = fromCache.res;
       // Check the age of the resource.
       if (this.config.refreshAheadMs !== undefined && fromCache.age >= this.config.refreshAheadMs) {
-        ctx.waitUntil(this.safeCacheResponse(req, this.safeFetch(req)));
+        ctx.waitUntil(this.safeCacheResponse(req, this.safeFetch(req), lru));
       }
     }
 
@@ -366,11 +363,12 @@ export class DataGroup {
       res = this.adapter.newResponse(null, {status: 504, statusText: 'Gateway Timeout'});
 
       // Cache the network response eventually.
-      ctx.waitUntil(this.safeCacheResponse(req, networkFetch));
+      ctx.waitUntil(this.safeCacheResponse(req, networkFetch, lru));
+    } else {
+      // The request completed in time, so cache it inline with the response flow.
+      await this.safeCacheResponse(req, res, lru);
     }
 
-    // The request completed in time, so cache it inline with the response flow.
-    await this.cacheResponse(req, res, lru);
     return res;
   }
 
@@ -384,20 +382,20 @@ export class DataGroup {
     // If that fetch errors, treat it as a timed out request.
     try {
       res = await timeoutFetch;
-    } catch (e) {
+    } catch {
       res = undefined;
     }
 
     // If the network fetch times out or errors, fall back on the cache.
     if (res === undefined) {
-      ctx.waitUntil(this.safeCacheResponse(req, networkFetch));
+      ctx.waitUntil(this.safeCacheResponse(req, networkFetch, lru, true));
 
       // Ignore the age, the network response will be cached anyway due to the
       // behavior of freshness.
       const fromCache = await this.loadFromCache(req, lru);
       res = (fromCache !== null) ? fromCache.res : null;
     } else {
-      await this.cacheResponse(req, res, lru, true);
+      await this.safeCacheResponse(req, res, lru, true);
     }
 
     // Either the network fetch didn't time out, or the cache yielded a usable response.
@@ -407,9 +405,7 @@ export class DataGroup {
     }
 
     // No response in the cache. No choice but to fall back on the full network fetch.
-    res = await networkFetch;
-    await this.cacheResponse(req, res, lru, true);
-    return res;
+    return networkFetch;
   }
 
   private networkFetchWithTimeout(req: Request): [Promise<Response|undefined>, Promise<Response>] {
@@ -420,7 +416,7 @@ export class DataGroup {
       const safeNetworkFetch = (async() => {
         try {
           return await networkFetch;
-        } catch (err) {
+        } catch {
           return this.adapter.newResponse(null, {
             status: 504,
             statusText: 'Gateway Timeout',
@@ -430,7 +426,7 @@ export class DataGroup {
       const networkFetchUndefinedError = (async() => {
         try {
           return await networkFetch;
-        } catch (err) {
+        } catch {
           return undefined;
         }
       })();
@@ -446,11 +442,26 @@ export class DataGroup {
     }
   }
 
-  private async safeCacheResponse(req: Request, res: Promise<Response>): Promise<void> {
+  private async safeCacheResponse(
+      req: Request, resOrPromise: Promise<Response>|Response, lru: LruList,
+      okToCacheOpaque?: boolean): Promise<void> {
     try {
-      await this.cacheResponse(req, await res, await this.lru());
-    } catch (e) {
-      // TODO: handle this error somehow?
+      const res = await resOrPromise;
+      try {
+        await this.cacheResponse(req, res, lru, okToCacheOpaque);
+      } catch (err) {
+        // Saving the API response failed. This could be a result of a full storage.
+        // Since this data is cached lazily and temporarily, continue serving clients as usual.
+        this.debugHandler.log(
+            err,
+            `DataGroup(${this.config.name}@${this.config.version}).safeCacheResponse(${req.url}, status: ${res.status})`);
+
+        // TODO: Better detect/handle full storage; e.g. using
+        // [navigator.storage](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorStorage/storage).
+      }
+    } catch {
+      // Request failed
+      // TODO: Handle this error somehow?
     }
   }
 
@@ -473,7 +484,7 @@ export class DataGroup {
         }
 
         // Otherwise, or if there was an error, assume the response is expired, and evict it.
-      } catch (e) {
+      } catch {
         // Some error getting the age for the response. Assume it's expired.
       }
 
@@ -493,10 +504,10 @@ export class DataGroup {
    * If the request times out on the server, an error will be returned but the real network
    * request will still be running in the background, to be cached when it completes.
    */
-  private async cacheResponse(
-      req: Request, res: Response, lru: LruList, okToCacheOpaque: boolean = false): Promise<void> {
+  private async cacheResponse(req: Request, res: Response, lru: LruList, okToCacheOpaque = false):
+      Promise<void> {
     // Only cache successful responses.
-    if (!res.ok || (okToCacheOpaque && res.type === 'opaque')) {
+    if (!(res.ok || (okToCacheOpaque && res.type === 'opaque'))) {
       return;
     }
 
@@ -559,7 +570,7 @@ export class DataGroup {
   private async safeFetch(req: Request): Promise<Response> {
     try {
       return this.scope.fetch(req);
-    } catch (err) {
+    } catch {
       return this.adapter.newResponse(null, {
         status: 504,
         statusText: 'Gateway Timeout',

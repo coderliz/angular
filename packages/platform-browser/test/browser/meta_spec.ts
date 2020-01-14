@@ -6,13 +6,13 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {Injectable} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import {BrowserModule, Meta} from '@angular/platform-browser';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
 
-export function main() {
+{
   describe('Meta service', () => {
     let doc: Document;
     let metaService: Meta;
@@ -22,9 +22,9 @@ export function main() {
       doc = getDOM().createHtmlDocument();
       metaService = new Meta(doc);
       defaultMeta = getDOM().createElement('meta', doc) as HTMLMetaElement;
-      getDOM().setAttribute(defaultMeta, 'property', 'fb:app_id');
-      getDOM().setAttribute(defaultMeta, 'content', '123456789');
-      getDOM().appendChild(getDOM().getElementsByTagName(doc, 'head')[0], defaultMeta);
+      defaultMeta.setAttribute('property', 'fb:app_id');
+      defaultMeta.setAttribute('content', '123456789');
+      doc.getElementsByTagName('head')[0].appendChild(defaultMeta);
     });
 
     afterEach(() => getDOM().remove(defaultMeta));
@@ -32,7 +32,7 @@ export function main() {
     it('should return meta tag matching selector', () => {
       const actual: HTMLMetaElement = metaService.getTag('property="fb:app_id"') !;
       expect(actual).not.toBeNull();
-      expect(getDOM().getAttribute(actual, 'content')).toEqual('123456789');
+      expect(actual.getAttribute('content')).toEqual('123456789');
     });
 
     it('should return all meta tags matching selector', () => {
@@ -41,8 +41,8 @@ export function main() {
 
       const actual: HTMLMetaElement[] = metaService.getTags('name=author');
       expect(actual.length).toEqual(2);
-      expect(getDOM().getAttribute(actual[0], 'content')).toEqual('page author');
-      expect(getDOM().getAttribute(actual[1], 'content')).toEqual('another page author');
+      expect(actual[0].getAttribute('content')).toEqual('page author');
+      expect(actual[1].getAttribute('content')).toEqual('another page author');
 
       // clean up
       metaService.removeTagElement(tag1);
@@ -87,7 +87,7 @@ export function main() {
 
       const actual = metaService.getTag(selector);
       expect(actual).not.toBeNull();
-      expect(getDOM().getAttribute(actual, 'content')).toEqual('4321');
+      expect(actual !.getAttribute('content')).toEqual('4321');
     });
 
     it('should extract selector from the tag definition', () => {
@@ -96,7 +96,7 @@ export function main() {
 
       const actual = metaService.getTag(selector);
       expect(actual).not.toBeNull();
-      expect(getDOM().getAttribute(actual, 'content')).toEqual('666');
+      expect(actual !.getAttribute('content')).toEqual('666');
     });
 
     it('should create meta tag if it does not exist', () => {
@@ -106,7 +106,7 @@ export function main() {
 
       const actual = metaService.getTag(selector) !;
       expect(actual).not.toBeNull();
-      expect(getDOM().getAttribute(actual, 'content')).toEqual('Content Title');
+      expect(actual.getAttribute('content')).toEqual('Content Title');
 
       // clean up
       metaService.removeTagElement(actual);
@@ -120,7 +120,7 @@ export function main() {
 
       const actual = metaService.getTag(selector) !;
       expect(actual).not.toBeNull();
-      expect(getDOM().getAttribute(actual, 'content')).toEqual('Content Title');
+      expect(actual.getAttribute('content')).toEqual('Content Title');
 
       // clean up
       metaService.removeTagElement(actual);
@@ -197,6 +197,6 @@ export function main() {
     });
 
     it('should inject Meta service when using BrowserModule',
-       () => expect(TestBed.get(DependsOnMeta).meta).toBeAnInstanceOf(Meta));
+       () => expect(TestBed.inject(DependsOnMeta).meta).toBeAnInstanceOf(Meta));
   });
 }

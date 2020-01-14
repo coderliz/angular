@@ -306,7 +306,7 @@ export class Evaluator {
                 error = propertyValue;
                 return true;  // Stop the forEachChild.
               } else {
-                obj[<string>propertyName] = isPropertyAssignment(assignment) ?
+                obj[propertyName] = isPropertyAssignment(assignment) ?
                     recordEntry(propertyValue, assignment.initializer) :
                     propertyValue;
               }
@@ -356,9 +356,6 @@ export class Evaluator {
           }
         }
         const args = arrayOrEmpty(callExpression.arguments).map(arg => this.evaluateNode(arg));
-        if (!this.options.verboseInvalidExpression && args.some(isMetadataError)) {
-          return args.find(isMetadataError);
-        }
         if (this.isFoldable(callExpression)) {
           if (isMethodCallOf(callExpression, 'concat')) {
             const arrayValue = <MetadataValue[]>this.evaluateNode(
@@ -384,9 +381,6 @@ export class Evaluator {
       case ts.SyntaxKind.NewExpression:
         const newExpression = <ts.NewExpression>node;
         const newArgs = arrayOrEmpty(newExpression.arguments).map(arg => this.evaluateNode(arg));
-        if (!this.options.verboseInvalidExpression && newArgs.some(isMetadataError)) {
-          return recordEntry(newArgs.find(isMetadataError), node);
-        }
         const newTarget = this.evaluateNode(newExpression.expression);
         if (isMetadataError(newTarget)) {
           return recordEntry(newTarget, node);
@@ -407,7 +401,7 @@ export class Evaluator {
           return recordEntry(member, node);
         }
         if (expression && this.isFoldable(propertyAccessExpression.expression))
-          return (<any>expression)[<string>member];
+          return (<any>expression)[member];
         if (isMetadataModuleReferenceExpression(expression)) {
           // A select into a module reference and be converted into a reference to the symbol
           // in the module
@@ -474,7 +468,7 @@ export class Evaluator {
         if (!isMetadataModuleReferenceExpression(typeReference) &&
             typeReferenceNode.typeArguments && typeReferenceNode.typeArguments.length) {
           const args = typeReferenceNode.typeArguments.map(element => this.evaluateNode(element));
-          // TODO: Remove typecast when upgraded to 2.0 as it will be corretly inferred.
+          // TODO: Remove typecast when upgraded to 2.0 as it will be correctly inferred.
           // Some versions of 1.9 do not infer this correctly.
           (<MetadataImportedSymbolReferenceExpression>typeReference).arguments = args;
         }
@@ -561,7 +555,7 @@ export class Evaluator {
               return !operand;
           }
         }
-        let operatorText: string;
+        let operatorText: '+'|'-'|'~'|'!';
         switch (prefixUnaryExpression.operator) {
           case ts.SyntaxKind.PlusToken:
             operatorText = '+';

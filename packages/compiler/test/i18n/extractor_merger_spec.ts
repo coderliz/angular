@@ -14,9 +14,9 @@ import {extractMessages, mergeTranslations} from '../../src/i18n/extractor_merge
 import * as i18n from '../../src/i18n/i18n_ast';
 import {TranslationBundle} from '../../src/i18n/translation_bundle';
 import * as html from '../../src/ml_parser/ast';
-import {serializeNodes as serializeHtmlNodes} from '../ml_parser/ast_serializer_spec';
+import {serializeNodes as serializeHtmlNodes} from '../ml_parser/util/util';
 
-export function main() {
+{
   describe('Extractor', () => {
     describe('elements', () => {
       it('should extract from elements', () => {
@@ -49,6 +49,12 @@ export function main() {
               ],
               [['single child'], 'm2', 'd2', 'i2'],
             ]);
+      });
+
+      it('should trim whitespace from custom ids (but not meanings)', () => {
+        expect(extract('<div i18n="\n   m1|d1@@i1\n   ">test</div>')).toEqual([
+          [['test'], '\n   m1', 'd1', 'i1'],
+        ]);
       });
 
       it('should extract from attributes without meaning and with id', () => {
@@ -501,7 +507,7 @@ export function main() {
 
 function parseHtml(html: string): html.Node[] {
   const htmlParser = new HtmlParser();
-  const parseResult = htmlParser.parse(html, 'extractor spec', true);
+  const parseResult = htmlParser.parse(html, 'extractor spec', {tokenizeExpansionForms: true});
   if (parseResult.errors.length > 1) {
     throw new Error(`unexpected parse errors: ${parseResult.errors.join('\n')}`);
   }
@@ -547,7 +553,7 @@ function fakeNoTranslate(
 
 function extract(
     html: string, implicitTags: string[] = [],
-    implicitAttrs: {[k: string]: string[]} = {}): [string[], string, string][] {
+    implicitAttrs: {[k: string]: string[]} = {}): [string[], string, string, string][] {
   const result =
       extractMessages(parseHtml(html), DEFAULT_INTERPOLATION_CONFIG, implicitTags, implicitAttrs);
 
@@ -558,7 +564,7 @@ function extract(
   // clang-format off
   // https://github.com/angular/clang-format/issues/35
   return result.messages.map(
-    message => [serializeI18nNodes(message.nodes), message.meaning, message.description, message.id]) as [string[], string, string][];
+    message => [serializeI18nNodes(message.nodes), message.meaning, message.description, message.id]) as [string[], string, string, string][];
   // clang-format on
 }
 

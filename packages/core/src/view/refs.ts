@@ -9,6 +9,8 @@
 import {ApplicationRef} from '../application_ref';
 import {ChangeDetectorRef} from '../change_detection/change_detection';
 import {Injector} from '../di/injector';
+import {InjectFlags} from '../di/interface/injector';
+import {Type} from '../interface/type';
 import {ComponentFactory, ComponentRef} from '../linker/component_factory';
 import {ComponentFactoryBoundToModule, ComponentFactoryResolver} from '../linker/component_factory_resolver';
 import {ElementRef} from '../linker/element_ref';
@@ -16,9 +18,7 @@ import {InternalNgModuleRef, NgModuleRef} from '../linker/ng_module_factory';
 import {TemplateRef} from '../linker/template_ref';
 import {ViewContainerRef} from '../linker/view_container_ref';
 import {EmbeddedViewRef, InternalViewRef, ViewRef} from '../linker/view_ref';
-import {Renderer as RendererV1, Renderer2} from '../render/api';
-import {Type} from '../type';
-import {stringify} from '../util';
+import {stringify} from '../util/stringify';
 import {VERSION} from '../version';
 
 import {callNgModuleLifecycle, initNgModule, resolveNgModuleDep} from './ng_module';
@@ -26,7 +26,7 @@ import {DepFlags, ElementData, NgModuleData, NgModuleDefinition, NodeDef, NodeFl
 import {markParentViewsForCheck, resolveDefinition, rootRenderNodes, splitNamespace, tokenKey, viewParentEl} from './util';
 import {attachEmbeddedView, detachEmbeddedView, moveEmbeddedView, renderDetachView} from './view_attach';
 
-const EMPTY_CONTEXT = new Object();
+const EMPTY_CONTEXT = {};
 
 // Attention: this function is called as top level function.
 // Putting any logic in here will destroy closure tree shaking!
@@ -138,6 +138,7 @@ class ViewContainerRef_ implements ViewContainerData {
 
   get injector(): Injector { return new Injector_(this._view, this._elDef); }
 
+  /** @deprecated No replacement */
   get parentInjector(): Injector {
     let view = this._view;
     let elDef = this._elDef.parent;
@@ -311,7 +312,8 @@ class TemplateRef_ extends TemplateRef<any> implements TemplateData {
   /**
    * @internal
    */
-  _projectedViews: ViewData[];
+  // TODO(issue/24571): remove '!'.
+  _projectedViews !: ViewData[];
 
   constructor(private _parentView: ViewData, private _def: NodeDef) { super(); }
 
@@ -353,122 +355,6 @@ export function nodeValue(view: ViewData, index: number): any {
   throw new Error(`Illegal state: read nodeValue for node index ${index}`);
 }
 
-export function createRendererV1(view: ViewData): RendererV1 {
-  return new RendererAdapter(view.renderer);
-}
-
-class RendererAdapter implements RendererV1 {
-  constructor(private delegate: Renderer2) {}
-  selectRootElement(selectorOrNode: string|Element): Element {
-    return this.delegate.selectRootElement(selectorOrNode);
-  }
-
-  createElement(parent: Element|DocumentFragment, namespaceAndName: string): Element {
-    const [ns, name] = splitNamespace(namespaceAndName);
-    const el = this.delegate.createElement(name, ns);
-    if (parent) {
-      this.delegate.appendChild(parent, el);
-    }
-    return el;
-  }
-
-  createViewRoot(hostElement: Element): Element|DocumentFragment { return hostElement; }
-
-  createTemplateAnchor(parentElement: Element|DocumentFragment): Comment {
-    const comment = this.delegate.createComment('');
-    if (parentElement) {
-      this.delegate.appendChild(parentElement, comment);
-    }
-    return comment;
-  }
-
-  createText(parentElement: Element|DocumentFragment, value: string): any {
-    const node = this.delegate.createText(value);
-    if (parentElement) {
-      this.delegate.appendChild(parentElement, node);
-    }
-    return node;
-  }
-
-  projectNodes(parentElement: Element|DocumentFragment, nodes: Node[]) {
-    for (let i = 0; i < nodes.length; i++) {
-      this.delegate.appendChild(parentElement, nodes[i]);
-    }
-  }
-
-  attachViewAfter(node: Node, viewRootNodes: Node[]) {
-    const parentElement = this.delegate.parentNode(node);
-    const nextSibling = this.delegate.nextSibling(node);
-    for (let i = 0; i < viewRootNodes.length; i++) {
-      this.delegate.insertBefore(parentElement, viewRootNodes[i], nextSibling);
-    }
-  }
-
-  detachView(viewRootNodes: (Element|Text|Comment)[]) {
-    for (let i = 0; i < viewRootNodes.length; i++) {
-      const node = viewRootNodes[i];
-      const parentElement = this.delegate.parentNode(node);
-      this.delegate.removeChild(parentElement, node);
-    }
-  }
-
-  destroyView(hostElement: Element|DocumentFragment, viewAllNodes: Node[]) {
-    for (let i = 0; i < viewAllNodes.length; i++) {
-      this.delegate.destroyNode !(viewAllNodes[i]);
-    }
-  }
-
-  listen(renderElement: any, name: string, callback: Function): Function {
-    return this.delegate.listen(renderElement, name, <any>callback);
-  }
-
-  listenGlobal(target: string, name: string, callback: Function): Function {
-    return this.delegate.listen(target, name, <any>callback);
-  }
-
-  setElementProperty(
-      renderElement: Element|DocumentFragment, propertyName: string, propertyValue: any): void {
-    this.delegate.setProperty(renderElement, propertyName, propertyValue);
-  }
-
-  setElementAttribute(renderElement: Element, namespaceAndName: string, attributeValue: string):
-      void {
-    const [ns, name] = splitNamespace(namespaceAndName);
-    if (attributeValue != null) {
-      this.delegate.setAttribute(renderElement, name, attributeValue, ns);
-    } else {
-      this.delegate.removeAttribute(renderElement, name, ns);
-    }
-  }
-
-  setBindingDebugInfo(renderElement: Element, propertyName: string, propertyValue: string): void {}
-
-  setElementClass(renderElement: Element, className: string, isAdd: boolean): void {
-    if (isAdd) {
-      this.delegate.addClass(renderElement, className);
-    } else {
-      this.delegate.removeClass(renderElement, className);
-    }
-  }
-
-  setElementStyle(renderElement: HTMLElement, styleName: string, styleValue: string): void {
-    if (styleValue != null) {
-      this.delegate.setStyle(renderElement, styleName, styleValue);
-    } else {
-      this.delegate.removeStyle(renderElement, styleName);
-    }
-  }
-
-  invokeElementMethod(renderElement: Element, methodName: string, args: any[]): void {
-    (renderElement as any)[methodName].apply(renderElement, args);
-  }
-
-  setText(renderNode: Text, text: string): void { this.delegate.setValue(renderNode, text); }
-
-  animate(): any { throw new Error('Renderer.animate is no longer supported!'); }
-}
-
-
 export function createNgModuleRef(
     moduleType: Type<any>, parent: Injector, bootstrapComponents: Type<any>[],
     def: NgModuleDefinition): NgModuleRef<any> {
@@ -479,7 +365,11 @@ class NgModuleRef_ implements NgModuleData, InternalNgModuleRef<any> {
   private _destroyListeners: (() => void)[] = [];
   private _destroyed: boolean = false;
   /** @internal */
-  _providers: any[];
+  // TODO(issue/24571): remove '!'.
+  _providers !: any[];
+  /** @internal */
+  // TODO(issue/24571): remove '!'.
+  _modules !: any[];
 
   readonly injector: Injector = this;
 
@@ -489,9 +379,16 @@ class NgModuleRef_ implements NgModuleData, InternalNgModuleRef<any> {
     initNgModule(this);
   }
 
-  get(token: any, notFoundValue: any = Injector.THROW_IF_NOT_FOUND): any {
+  get(token: any, notFoundValue: any = Injector.THROW_IF_NOT_FOUND,
+      injectFlags: InjectFlags = InjectFlags.Default): any {
+    let flags = DepFlags.None;
+    if (injectFlags & InjectFlags.SkipSelf) {
+      flags |= DepFlags.SkipSelf;
+    } else if (injectFlags & InjectFlags.Self) {
+      flags |= DepFlags.Self;
+    }
     return resolveNgModuleDep(
-        this, {token: token, tokenKey: tokenKey(token), flags: DepFlags.None}, notFoundValue);
+        this, {token: token, tokenKey: tokenKey(token), flags: flags}, notFoundValue);
   }
 
   get instance() { return this.get(this._moduleType); }

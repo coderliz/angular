@@ -5,11 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-
-
-
 import {CompileReflector} from '../compile_reflector';
-
 import * as o from './output_ast';
 import {debugOutputAstAsTypeScript} from './ts_emitter';
 
@@ -38,8 +34,8 @@ class _ExecutionContext {
   exports: string[] = [];
 
   constructor(
-      public parent: _ExecutionContext|null, public instance: any, public className: string|null,
-      public vars: Map<string, any>) {}
+      public parent: _ExecutionContext|null, public instance: Object|null,
+      public className: string|null, public vars: Map<string, any>) {}
 
   createChildWihtLocalVars(): _ExecutionContext {
     return new _ExecutionContext(this, this.instance, this.className, new Map<string, any>());
@@ -79,9 +75,9 @@ function createDynamicClass(
 
   const ctorParamNames = _classStmt.constructorMethod.params.map(param => param.name);
   // Note: use `function` instead of arrow function to capture `this`
-  const ctor = function(...args: any[]) {
+  const ctor = function(this: Object, ...args: any[]) {
     const instanceCtx = new _ExecutionContext(_ctx, this, _classStmt.name, _ctx.vars);
-    _classStmt.fields.forEach((field) => { this[field.name] = undefined; });
+    _classStmt.fields.forEach((field) => { (this as any)[field.name] = undefined; });
     _executeFunctionStatements(
         ctorParamNames, args, _classStmt.constructorMethod.body, instanceCtx, _visitor);
   };
@@ -95,7 +91,8 @@ class StatementInterpreter implements o.StatementVisitor, o.ExpressionVisitor {
   debugAst(ast: o.Expression|o.Statement|o.Type): string { return debugOutputAstAsTypeScript(ast); }
 
   visitDeclareVarStmt(stmt: o.DeclareVarStmt, ctx: _ExecutionContext): any {
-    ctx.vars.set(stmt.name, stmt.value.visitExpression(this, ctx));
+    const initialValue = stmt.value ? stmt.value.visitExpression(this, ctx) : undefined;
+    ctx.vars.set(stmt.name, initialValue);
     if (stmt.hasModifier(o.StmtModifier.Exported)) {
       ctx.exports.push(stmt.name);
     }
@@ -113,12 +110,18 @@ class StatementInterpreter implements o.StatementVisitor, o.ExpressionVisitor {
     }
     throw new Error(`Not declared variable ${expr.name}`);
   }
+  visitWrappedNodeExpr(ast: o.WrappedNodeExpr<any>, ctx: _ExecutionContext): never {
+    throw new Error('Cannot interpret a WrappedNodeExpr.');
+  }
+  visitTypeofExpr(ast: o.TypeofExpr, ctx: _ExecutionContext): never {
+    throw new Error('Cannot interpret a TypeofExpr');
+  }
   visitReadVarExpr(ast: o.ReadVarExpr, ctx: _ExecutionContext): any {
     let varName = ast.name !;
     if (ast.builtin != null) {
       switch (ast.builtin) {
         case o.BuiltinVar.Super:
-          return ctx.instance.__proto__;
+          return Object.getPrototypeOf(ctx.instance);
         case o.BuiltinVar.This:
           return ctx.instance;
         case o.BuiltinVar.CatchError:
@@ -181,7 +184,7 @@ class StatementInterpreter implements o.StatementVisitor, o.ExpressionVisitor {
     const args = this.visitAllExpressions(stmt.args, ctx);
     const fnExpr = stmt.fn;
     if (fnExpr instanceof o.ReadVarExpr && fnExpr.builtin === o.BuiltinVar.Super) {
-      ctx.instance.constructor.prototype.constructor.apply(ctx.instance, args);
+      ctx.instance !.constructor.prototype.constructor.apply(ctx.instance, args);
       return null;
     } else {
       const fn = stmt.fn.visitExpression(this, ctx);
@@ -225,12 +228,14 @@ class StatementInterpreter implements o.StatementVisitor, o.ExpressionVisitor {
     throw stmt.error.visitExpression(this, ctx);
   }
   visitCommentStmt(stmt: o.CommentStmt, context?: any): any { return null; }
+  visitJSDocCommentStmt(stmt: o.JSDocCommentStmt, context?: any): any { return null; }
   visitInstantiateExpr(ast: o.InstantiateExpr, ctx: _ExecutionContext): any {
     const args = this.visitAllExpressions(ast.args, ctx);
     const clazz = ast.classExpr.visitExpression(this, ctx);
     return new clazz(...args);
   }
   visitLiteralExpr(ast: o.LiteralExpr, ctx: _ExecutionContext): any { return ast.value; }
+  visitLocalizedString(ast: o.LocalizedString, context: any): any { return null; }
   visitExternalExpr(ast: o.ExternalExpr, ctx: _ExecutionContext): any {
     return this.reflector.resolveExternalReference(ast.value);
   }

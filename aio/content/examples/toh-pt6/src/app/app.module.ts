@@ -3,7 +3,9 @@
 import { NgModule }       from '@angular/core';
 import { BrowserModule }  from '@angular/platform-browser';
 import { FormsModule }    from '@angular/forms';
+// #docregion import-http-client
 import { HttpClientModule }    from '@angular/common/http';
+// #enddocregion import-http-client
 
 // #docregion import-in-mem-stuff
 import { HttpClientInMemoryWebApiModule } from 'angular-in-memory-web-api';
@@ -19,17 +21,19 @@ import { HeroesComponent }      from './heroes/heroes.component';
 // #enddocregion v1
 import { HeroSearchComponent }  from './hero-search/hero-search.component';
 // #docregion v1
-import { HeroService }          from './hero.service';
-import { MessageService }       from './message.service';
 import { MessagesComponent }    from './messages/messages.component';
 
+    // #docregion import-httpclientmodule
 @NgModule({
   imports: [
+    // #enddocregion import-httpclientmodule
     BrowserModule,
     FormsModule,
     AppRoutingModule,
     // #docregion in-mem-web-api-imports
+    // #docregion import-httpclientmodule
     HttpClientModule,
+    // #enddocregion import-httpclientmodule
 
     // The HttpClientInMemoryWebApiModule module intercepts HTTP requests
     // and returns simulated server responses.
@@ -38,7 +42,9 @@ import { MessagesComponent }    from './messages/messages.component';
       InMemoryDataService, { dataEncapsulation: false }
     )
     // #enddocregion in-mem-web-api-imports
+  // #docregion import-httpclientmodule
   ],
+  // #enddocregion import-httpclientmodule
   declarations: [
     AppComponent,
     DashboardComponent,
@@ -49,8 +55,10 @@ import { MessagesComponent }    from './messages/messages.component';
     HeroSearchComponent
     // #docregion v1
   ],
-  providers: [ HeroService, MessageService ],
   bootstrap: [ AppComponent ]
+// #docregion import-httpclientmodule
 })
+// #enddocregion import-httpclientmodule
+
 export class AppModule { }
 // #enddocregion , v1

@@ -12,10 +12,12 @@ export type ManifestHash = string;
 
 export interface Manifest {
   configVersion: number;
+  timestamp: number;
   appData?: {[key: string]: string};
   index: string;
   assetGroups?: AssetGroupConfig[];
   dataGroups?: DataGroupConfig[];
+  navigationUrls: {positive: boolean, regex: string}[];
   hashTable: {[url: string]: string};
 }
 

@@ -6,7 +6,8 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ɵlooseIdentical as looseIdentical} from '@angular/core';
+import {isDevMode, ɵlooseIdentical as looseIdentical} from '@angular/core';
+
 import {FormArray, FormControl, FormGroup} from '../model';
 import {Validators} from '../validators';
 import {AbstractControlDirective} from './abstract_control_directive';
@@ -21,13 +22,14 @@ import {NumberValueAccessor} from './number_value_accessor';
 import {RadioControlValueAccessor} from './radio_control_value_accessor';
 import {RangeValueAccessor} from './range_value_accessor';
 import {FormArrayName} from './reactive_directives/form_group_name';
+import {ReactiveErrors} from './reactive_errors';
 import {SelectControlValueAccessor} from './select_control_value_accessor';
 import {SelectMultipleControlValueAccessor} from './select_multiple_control_value_accessor';
 import {AsyncValidator, AsyncValidatorFn, Validator, ValidatorFn} from './validators';
 
 
-export function controlPath(name: string, parent: ControlContainer): string[] {
-  return [...parent.path !, name];
+export function controlPath(name: string | null, parent: ControlContainer): string[] {
+  return [...parent.path !, name !];
 }
 
 export function setUpControl(control: FormControl, dir: NgControl): void {
@@ -99,9 +101,9 @@ function setUpBlurPipeline(control: FormControl, dir: NgControl): void {
 }
 
 function updateControl(control: FormControl, dir: NgControl): void {
-  dir.viewToModelUpdate(control._pendingValue);
   if (control._pendingDirty) control.markAsDirty();
   control.setValue(control._pendingValue, {emitModelToViewChange: false});
+  dir.viewToModelUpdate(control._pendingValue);
   control._pendingChange = false;
 }
 
@@ -138,12 +140,12 @@ function _throwError(dir: AbstractControlDirective, message: string): void {
   throw new Error(`${message} ${messageEnd}`);
 }
 
-export function composeValidators(validators: Array<Validator|Function>): ValidatorFn|null {
+export function composeValidators(validators: Array<Validator|ValidatorFn>): ValidatorFn|null {
   return validators != null ? Validators.compose(validators.map(normalizeValidator)) : null;
 }
 
-export function composeAsyncValidators(validators: Array<Validator|Function>): AsyncValidatorFn|
-    null {
+export function composeAsyncValidators(validators: Array<AsyncValidator|AsyncValidatorFn>):
+    AsyncValidatorFn|null {
   return validators != null ? Validators.composeAsync(validators.map(normalizeAsyncValidator)) :
                               null;
 }
@@ -185,9 +187,13 @@ export function selectValueAccessor(
     dir: NgControl, valueAccessors: ControlValueAccessor[]): ControlValueAccessor|null {
   if (!valueAccessors) return null;
 
+  if (!Array.isArray(valueAccessors))
+    _throwError(dir, 'Value accessor was not provided as an array for form control with');
+
   let defaultAccessor: ControlValueAccessor|undefined = undefined;
   let builtinAccessor: ControlValueAccessor|undefined = undefined;
   let customAccessor: ControlValueAccessor|undefined = undefined;
+
   valueAccessors.forEach((v: ControlValueAccessor) => {
     if (v.constructor === DefaultValueAccessor) {
       defaultAccessor = v;
@@ -215,4 +221,18 @@ export function selectValueAccessor(
 export function removeDir<T>(list: T[], el: T): void {
   const index = list.indexOf(el);
   if (index > -1) list.splice(index, 1);
+}
+
+// TODO(kara): remove after deprecation period
+export function _ngModelWarning(
+    name: string, type: {_ngModelWarningSentOnce: boolean},
+    instance: {_ngModelWarningSent: boolean}, warningConfig: string | null) {
+  if (!isDevMode() || warningConfig === 'never') return;
+
+  if (((warningConfig === null || warningConfig === 'once') && !type._ngModelWarningSentOnce) ||
+      (warningConfig === 'always' && !instance._ngModelWarningSent)) {
+    ReactiveErrors.ngModelWarning(name);
+    type._ngModelWarningSentOnce = true;
+    instance._ngModelWarningSent = true;
+  }
 }

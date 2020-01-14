@@ -7,7 +7,7 @@ this user?_) and authorization (_What can this user do?_).
 
 For more information about the attacks and mitigations described below, see [OWASP Guide Project](https://www.owasp.org/index.php/Category:OWASP_Guide_Project).
 
-You can run the <live-example></live-example> in Plunker and download the code from there.
+You can run the <live-example></live-example> in Stackblitz and download the code from there.
 
 
 
@@ -98,9 +98,7 @@ The following template binds the value of `htmlSnippet`, once by interpolating i
 content, and once by binding it to the `innerHTML` property of an element:
 
 
-<code-example path="security/src/app/inner-html-binding.component.html" title="src/app/inner-html-binding.component.html">
-
-</code-example>
+<code-example path="security/src/app/inner-html-binding.component.html" header="src/app/inner-html-binding.component.html"></code-example>
 
 
 
@@ -112,28 +110,32 @@ a value that an attacker might control into `innerHTML` normally causes an XSS
 vulnerability. For example, code contained in a `<script>` tag is executed:
 
 
-<code-example path="security/src/app/inner-html-binding.component.ts" linenums="false" title="src/app/inner-html-binding.component.ts (class)" region="class">
-
-</code-example>
+<code-example path="security/src/app/inner-html-binding.component.ts" header="src/app/inner-html-binding.component.ts (class)" region="class"></code-example>
 
 
 
 Angular recognizes the value as unsafe and automatically sanitizes it, which removes the `<script>`
-tag but keeps safe content such as the text content of the `<script>` tag and the `<b>` element.
+tag but keeps safe content such as the `<b>` element.
 
 
-<figure>
+<div class="lightbox">
   <img src='generated/images/guide/security/binding-inner-html.png' alt='A screenshot showing interpolated and bound HTML values'>
-</figure>
+</div>
 
 
-
-### Avoid direct use of the DOM APIs
+### Direct use of the DOM APIs and explicit sanitization calls
 
 The built-in browser DOM APIs don't automatically protect you from security vulnerabilities.
 For example, `document`, the node available through `ElementRef`, and many third-party APIs
-contain unsafe methods. Avoid directly interacting with the DOM and instead use Angular
-templates where possible.
+contain unsafe methods. In the same way, if you interact with other libraries that manipulate
+the DOM, you likely won't have the same automatic sanitization as with Angular interpolations.
+Avoid directly interacting with the DOM and instead use Angular templates where possible.
+
+For cases where this is unavoidable, use the built-in Angular sanitization functions.
+Sanitize untrusted values with the [DomSanitizer.sanitize](api/platform-browser/DomSanitizer#sanitize)
+method and the appropriate `SecurityContext`. That function also accepts values that were
+marked as trusted using the `bypassSecurityTrust`... functions, and will not sanitize them,
+as [described below](#bypass-security-apis).
 
 ### Content security policy
 
@@ -194,9 +196,7 @@ your intended use of the value. Imagine that the following template needs to bin
 `javascript:alert(...)` call:
 
 
-<code-example path="security/src/app/bypass-security.component.html" linenums="false" title="src/app/bypass-security.component.html (URL)" region="URL">
-
-</code-example>
+<code-example path="security/src/app/bypass-security.component.html" header="src/app/bypass-security.component.html (URL)" region="URL"></code-example>
 
 
 
@@ -205,15 +205,13 @@ in development mode, logs this action to the console. To prevent
 this, mark the URL value as a trusted URL using the `bypassSecurityTrustUrl` call:
 
 
-<code-example path="security/src/app/bypass-security.component.ts" linenums="false" title="src/app/bypass-security.component.ts (trust-url)" region="trust-url">
-
-</code-example>
+<code-example path="security/src/app/bypass-security.component.ts" header="src/app/bypass-security.component.ts (trust-url)" region="trust-url"></code-example>
 
 
 
-<figure>
+<div class="lightbox">
   <img src='generated/images/guide/security/bypass-security-component.png' alt='A screenshot showing an alert box created from a trusted URL'>
-</figure>
+</div>
 
 
 
@@ -225,15 +223,11 @@ could execute. So call a method on the controller to construct a trusted video U
 Angular to allow binding into `<iframe src>`:
 
 
-<code-example path="security/src/app/bypass-security.component.html" linenums="false" title="src/app/bypass-security.component.html (iframe)" region="iframe">
-
-</code-example>
+<code-example path="security/src/app/bypass-security.component.html" header="src/app/bypass-security.component.html (iframe)" region="iframe"></code-example>
 
 
 
-<code-example path="security/src/app/bypass-security.component.ts" linenums="false" title="src/app/bypass-security.component.ts (trust-video-url)" region="trust-video-url">
-
-</code-example>
+<code-example path="security/src/app/bypass-security.component.ts" header="src/app/bypass-security.component.ts (trust-video-url)" region="trust-video-url"></code-example>
 
 
 
@@ -282,7 +276,7 @@ This technique is effective because all browsers implement the _same origin poli
 on which cookies are set can read the cookies from that site and set custom headers on requests to that site.
 That means only your application can read this cookie token and set the custom header. The malicious code on `evil.com` can't.
 
-Angular's `HttpClient` has built-in support for the client-side half of this technique. Read about it more in the [HttpClient guide](/guide/http).
+Angular's `HttpClient` has built-in support for the client-side half of this technique. Read about it more in the [HttpClient guide](/guide/http#security-xsrf-protection).
 
 For information about CSRF at the Open Web Application Security Project (OWASP), see
 <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_%28CSRF%29">Cross-Site Request Forgery (CSRF)</a> and

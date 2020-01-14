@@ -7,9 +7,8 @@
  */
 
 import {DOCUMENT} from '@angular/common';
-import {Inject, Injectable, InjectionToken} from '@angular/core';
-import {Observable} from 'rxjs/Observable';
-import {Observer} from 'rxjs/Observer';
+import {Inject, Injectable} from '@angular/core';
+import {Observable, Observer} from 'rxjs';
 
 import {HttpBackend, HttpHandler} from './backend';
 import {HttpRequest} from './request';
@@ -35,15 +34,17 @@ export const JSONP_ERR_WRONG_RESPONSE_TYPE = 'JSONP requests must use Json respo
  *
  * In the browser, this should always be the `window` object.
  *
- * @stable
+ *
  */
 export abstract class JsonpCallbackContext { [key: string]: (data: any) => void; }
 
 /**
- * `HttpBackend` that only processes `HttpRequest` with the JSONP method,
+ * Processes an `HttpRequest` with the JSONP method,
  * by performing JSONP style requests.
+ * @see `HttpHandler`
+ * @see `HttpXhrBackend`
  *
- * @stable
+ * @publicApi
  */
 @Injectable()
 export class JsonpClientBackend implements HttpBackend {
@@ -55,7 +56,10 @@ export class JsonpClientBackend implements HttpBackend {
   private nextCallback(): string { return `ng_jsonp_callback_${nextRequestId++}`; }
 
   /**
-   * Process a JSONP request and return an event stream of the results.
+   * Processes a JSONP request and returns an event stream of the results.
+   * @param req The request object.
+   * @returns An observable of the response events.
+   *
    */
   handle(req: HttpRequest<never>): Observable<HttpEvent<any>> {
     // Firstly, check both the method and response type. If either doesn't match
@@ -156,7 +160,7 @@ export class JsonpClientBackend implements HttpBackend {
           statusText: 'OK', url,
         }));
 
-        // Complete the stream, the resposne is over.
+        // Complete the stream, the response is over.
         observer.complete();
       };
 
@@ -204,15 +208,24 @@ export class JsonpClientBackend implements HttpBackend {
 }
 
 /**
- * An `HttpInterceptor` which identifies requests with the method JSONP and
+ * Identifies requests with the method JSONP and
  * shifts them to the `JsonpClientBackend`.
  *
- * @stable
+ * @see `HttpInterceptor`
+ *
+ * @publicApi
  */
 @Injectable()
 export class JsonpInterceptor {
   constructor(private jsonp: JsonpClientBackend) {}
 
+  /**
+   * Identifies and handles a given JSONP request.
+   * @param req The outgoing request object to handle.
+   * @param next The next interceptor in the chain, or the backend
+   * if no interceptors remain in the chain.
+   * @returns An observable of the event stream.
+   */
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     if (req.method === 'JSONP') {
       return this.jsonp.handle(req as HttpRequest<never>);

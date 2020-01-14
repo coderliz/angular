@@ -23,16 +23,17 @@ export class CacheDatabase implements Database {
     if (this.tables.has(name)) {
       this.tables.delete(name);
     }
-    return this.scope.caches.delete(`ngsw:db:${name}`);
+    return this.scope.caches.delete(`${this.adapter.cacheNamePrefix}:db:${name}`);
   }
 
   list(): Promise<string[]> {
-    return this.scope.caches.keys().then(keys => keys.filter(key => key.startsWith('ngsw:db:')));
+    return this.scope.caches.keys().then(
+        keys => keys.filter(key => key.startsWith(`${this.adapter.cacheNamePrefix}:db:`)));
   }
 
   open(name: string): Promise<Table> {
     if (!this.tables.has(name)) {
-      const table = this.scope.caches.open(`ngsw:db:${name}`)
+      const table = this.scope.caches.open(`${this.adapter.cacheNamePrefix}:db:${name}`)
                         .then(cache => new CacheTable(name, cache, this.adapter));
       this.tables.set(name, table);
     }
@@ -51,7 +52,7 @@ export class CacheTable implements Table {
   'delete'(key: string): Promise<boolean> { return this.cache.delete(this.request(key)); }
 
   keys(): Promise<string[]> {
-    return this.cache.keys().then(keys => keys.map(key => key.substr(1)));
+    return this.cache.keys().then(requests => requests.map(req => req.url.substr(1)));
   }
 
   read(key: string): Promise<any> {

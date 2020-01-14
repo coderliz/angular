@@ -5,13 +5,12 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-
+/// <reference types="node" />
 import * as ng from '@angular/compiler-cli';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as ts from 'typescript';
-
 import {TestSupport, expectNoDiagnostics, setup} from '../test_support';
 
 type MockFiles = {
@@ -48,13 +47,13 @@ describe('ng type checker', () => {
   }
 
   function reject(
-      message: string | RegExp, location: RegExp, files: MockFiles,
+      message: string | RegExp, location: RegExp | null, files: MockFiles,
       overrideOptions: ng.CompilerOptions = {}) {
     const diagnostics = compileAndCheck([QUICKSTART, files], overrideOptions);
     if (!diagnostics || !diagnostics.length) {
-      throw new Error('Expected a diagnostic erorr message');
+      throw new Error('Expected a diagnostic error message');
     } else {
-      const matches: (d: ng.Diagnostic) => boolean = typeof message === 'string' ?
+      const matches: (d: ng.Diagnostic | ts.Diagnostic) => boolean = typeof message === 'string' ?
           d => ng.isNgDiagnostic(d)&& d.messageText == message :
           d => ng.isNgDiagnostic(d) && message.test(d.messageText);
       const matchingDiagnostics = diagnostics.filter(matches) as ng.Diagnostic[];
@@ -63,11 +62,13 @@ describe('ng type checker', () => {
             `Expected a diagnostics matching ${message}, received\n  ${diagnostics.map(d => d.messageText).join('\n  ')}`);
       }
 
-      const span = matchingDiagnostics[0].span;
-      if (!span) {
-        throw new Error('Expected a sourceSpan');
+      if (location) {
+        const span = matchingDiagnostics[0].span;
+        if (!span) {
+          throw new Error('Expected a sourceSpan');
+        }
+        expect(`${span.start.file.url}@${span.start.line}:${span.start.offset}`).toMatch(location);
       }
-      expect(`${span.start.file.url}@${span.start.line}:${span.start.offset}`).toMatch(location);
     }
   }
 
@@ -82,7 +83,7 @@ describe('ng type checker', () => {
   });
 
   describe('type narrowing', () => {
-    const a = (files: MockFiles, options: object = {}) => {
+    const a = (files: MockFiles, options: ng.AngularCompilerOptions = {}) => {
       accept(files, {fullTemplateTypeCheck: true, ...options});
     };
 
@@ -214,14 +215,416 @@ describe('ng type checker', () => {
         export class MainModule {}`
       });
     });
+
+    it('should narrow an *ngIf like directive with UseIf', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: '<div *myIf="person"> {{person.name}} </div>'
+        })
+        export class MainComp {
+          person?: Person;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[myIf]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input()
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
+
+    it('should narrow a renamed *ngIf like directive with UseIf', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: '<div *my-if="person"> {{person.name}} </div>'
+        })
+        export class MainComp {
+          person?: Person;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[my-if]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input('my-if')
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
+
+    it('should narrow a type in a nested *ngIf like directive with UseIf', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Address {
+          street: string;
+        }
+
+        export interface Person {
+          name: string;
+          address?: Address;
+        }
+
+
+        @Component({
+          selector: 'comp',
+          template: '<div *myIf="person"> {{person.name}} <span *myIf="person.address">{{person.address.street}}</span></div>'
+        })
+        export class MainComp {
+          person?: Person;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[myIf]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input()
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
+
+    it('should narrow an *ngIf like directive with UseIf and &&', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Address {
+          street: string;
+        }
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: '<div *myIf="person && address"> {{person.name}} lives at {{address.street}} </div>'
+        })
+        export class MainComp {
+          person?: Person;
+          address?: Address;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[myIf]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input()
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
+
+    it('should narrow an *ngIf like directive with UseIf and !!', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: '<div *myIf="!!person"> {{person.name}} </div>'
+        })
+        export class MainComp {
+          person?: Person;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[myIf]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input()
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
+
+    it('should narrow an *ngIf like directive with UseIf and != null', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: '<div *myIf="person != null"> {{person.name}} </div>'
+        })
+        export class MainComp {
+          person: Person | null = null;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[myIf]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input()
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
+
+    it('should narrow an *ngIf like directive with UseIf and != undefined', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component, Directive, HostListener, TemplateRef, Input} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: '<div *myIf="person != undefined"> {{person.name}} </div>'
+        })
+        export class MainComp {
+          person?: Person;
+        }
+
+        export class MyIfContext {
+          public $implicit: any = null;
+          public myIf: any = null;
+        }
+
+        @Directive({selector: '[myIf]'})
+        export class MyIf {
+          constructor(templateRef: TemplateRef<MyIfContext>) {}
+
+          @Input()
+          set myIf(condition: any) {}
+
+          static myIfUseIfTypeGuard: void;
+        }
+
+        @NgModule({
+          declarations: [MainComp, MyIf],
+        })
+        export class MainModule {}`
+      });
+    });
   });
 
-  describe('regressions ', () => {
-    const a = (files: MockFiles, options: object = {}) => {
+  describe('casting $any', () => {
+    const a = (files: MockFiles, options: ng.AngularCompilerOptions = {}) => {
+      accept(
+          {'src/app.component.ts': '', 'src/lib.ts': '', ...files},
+          {fullTemplateTypeCheck: true, ...options});
+    };
+
+    const r =
+        (message: string | RegExp, location: RegExp | null, files: MockFiles,
+         options: ng.AngularCompilerOptions = {}) => {
+          reject(
+              message, location, {'src/app.component.ts': '', 'src/lib.ts': '', ...files},
+              {fullTemplateTypeCheck: true, ...options});
+        };
+
+    it('should allow member access of an expression', () => {
+      a({
+        'src/app.module.ts': `
+        import {NgModule, Component} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: ' {{$any(person).address}}'
+        })
+        export class MainComp {
+          person: Person;
+        }
+
+        @NgModule({
+          declarations: [MainComp],
+        })
+        export class MainModule {
+        }`
+      });
+    });
+
+    it('should allow invalid this.member access', () => {
+      a({
+        'src/app.module.ts': `
+        import {NgModule, Component} from '@angular/core';
+
+        @Component({
+          selector: 'comp',
+          template: ' {{$any(this).missing}}'
+        })
+        export class MainComp { }
+
+        @NgModule({
+          declarations: [MainComp],
+        })
+        export class MainModule {
+        }`
+      });
+    });
+
+    it('should reject too few parameters to $any', () => {
+      r(/Invalid call to \$any, expected 1 argument but received none/, null, {
+        'src/app.module.ts': `
+        import {NgModule, Component} from '@angular/core';
+
+        @Component({
+          selector: 'comp',
+          template: ' {{$any().missing}}'
+        })
+        export class MainComp { }
+
+        @NgModule({
+          declarations: [MainComp],
+        })
+        export class MainModule {
+        }`
+      });
+    });
+
+    it('should reject too many parameters to $any', () => {
+      r(/Invalid call to \$any, expected 1 argument but received 2/, null, {
+        'src/app.module.ts': `
+        import {NgModule, Component} from '@angular/core';
+
+        export interface Person {
+          name: string;
+        }
+
+        @Component({
+          selector: 'comp',
+          template: ' {{$any(person, 12).missing}}'
+        })
+        export class MainComp {
+          person: Person;
+        }
+
+        @NgModule({
+          declarations: [MainComp],
+        })
+        export class MainModule {
+        }`
+      });
+    });
+  });
+
+  describe('core', () => {
+    const a = (files: MockFiles, options: ng.AngularCompilerOptions = {}) => {
       accept(files, {fullTemplateTypeCheck: true, ...options});
     };
 
-    // #19905
+    // Regression #19905
     it('should accept an event binding', () => {
       a({
         'src/app.component.ts': '',
@@ -245,6 +648,38 @@ describe('ng type checker', () => {
 
         @NgModule({
           declarations: [MainComp, SomeDirective],
+        })
+        export class MainModule {}`
+      });
+    });
+  });
+
+  describe('common', () => {
+    const a = (files: MockFiles, options: ng.AngularCompilerOptions = {}) => {
+      accept(files, {fullTemplateTypeCheck: true, ...options});
+    };
+
+    // Regression #19905
+    it('should accept a |undefined or |null parameter for async_pipe', () => {
+      a({
+        'src/app.component.ts': '',
+        'src/lib.ts': '',
+        'src/app.module.ts': `
+        import {NgModule, Component} from '@angular/core';
+        import {CommonModule} from '@angular/common';
+
+        @Component({
+          selector: 'comp',
+          template: '<div>{{ name | async}}</div>'
+        })
+        export class MainComp {
+          name: Promise<string>|undefined;
+        }
+
+
+        @NgModule({
+          declarations: [MainComp],
+          imports: [CommonModule]
         })
         export class MainModule {}`
       });
@@ -321,7 +756,7 @@ describe('ng type checker', () => {
     it('should reject an access to a nullable field of a method result', () => {
       r('<div>{{getMaybePerson().name}}</div>', `Object is possibly 'undefined'.`, '0:5');
     });
-    it('should accept a nullable assert of a nullable field refernces of a method result',
+    it('should accept a nullable assert of a nullable field references of a method result',
        () => { a('{{getMaybePerson()!.name}}'); });
     it('should accept a safe property access of a nullable field reference of a method result',
        () => { a('{{getMaybePerson()?.name}}'); });
@@ -335,12 +770,6 @@ describe('ng type checker', () => {
       rejectOnlyWithFullTemplateTypeCheck(
           '<div>{{"hello" | aPipe}}</div>',
           `Argument of type '"hello"' is not assignable to parameter of type 'number'.`, '0:5');
-    });
-    it('should report an index into a map expression', () => {
-      rejectOnlyWithFullTemplateTypeCheck(
-          '<div>{{ {a: 1}[name] }}</div>',
-          `Element implicitly has an 'any' type because type '{ a: number; }' has no index signature.`,
-          '0:5');
     });
     it('should report an invalid property on an exportAs directive', () => {
       rejectOnlyWithFullTemplateTypeCheck(

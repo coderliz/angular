@@ -9,10 +9,9 @@ import {animate, style, transition, trigger} from '@angular/animations';
 import {ɵAnimationEngine} from '@angular/animations/browser';
 import {Component} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import {NoopAnimationsModule} from '@angular/platform-browser/animations';
 
-import {NoopAnimationsModule} from '../src/module';
-
-export function main() {
+{
   describe('NoopAnimationsModule', () => {
     beforeEach(() => { TestBed.configureTestingModule({imports: [NoopAnimationsModule]}); });
 
@@ -69,7 +68,7 @@ export function main() {
          }
 
          TestBed.configureTestingModule({declarations: [Cmp]});
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(Cmp);
          const cmp = fixture.componentInstance;
 

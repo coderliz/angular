@@ -5,17 +5,16 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-
+/// <reference types="node" />
 import * as ng from '@angular/compiler-cli';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-
 import {formatDiagnostics} from '../../src/perform_compile';
 import {CompilerHost, EmitFlags, LazyRoute} from '../../src/transformers/api';
 import {createSrcToOutPathMapper} from '../../src/transformers/program';
-import {GENERATED_FILES, StructureIsReused, tsStructureIsReused} from '../../src/transformers/util';
-import {TestSupport, expectNoDiagnosticsInProgram, setup} from '../test_support';
+import {StructureIsReused, tsStructureIsReused} from '../../src/transformers/util';
+import {TestSupport, expectNoDiagnosticsInProgram, setup, stripAnsi} from '../test_support';
 
 describe('ng program', () => {
   let testSupport: TestSupport;
@@ -53,7 +52,7 @@ describe('ng program', () => {
     expectNoDiagnosticsInProgram(options, program);
     fs.symlinkSync(
         path.resolve(testSupport.basePath, 'built', `${libName}_src`),
-        path.resolve(testSupport.basePath, 'node_modules', libName));
+        path.resolve(testSupport.basePath, 'node_modules', libName), 'dir');
     program.emit({emitFlags: ng.EmitFlags.DTS | ng.EmitFlags.JS | ng.EmitFlags.Metadata});
   }
 
@@ -76,6 +75,30 @@ describe('ng program', () => {
     expectNoDiagnosticsInProgram(options, program);
     const emitResult = program.emit();
     return {emitResult, program};
+  }
+
+  function createWatchModeHost(): ng.CompilerHost {
+    const options = testSupport.createCompilerOptions();
+    const host = ng.createCompilerHost({options});
+
+    const originalGetSourceFile = host.getSourceFile;
+    const cache = new Map<string, ts.SourceFile>();
+    host.getSourceFile = function(
+                             fileName: string, languageVersion: ts.ScriptTarget): ts.SourceFile |
+        undefined {
+          const sf = originalGetSourceFile.call(host, fileName, languageVersion);
+          if (sf) {
+            if (cache.has(sf.fileName)) {
+              const oldSf = cache.get(sf.fileName) !;
+              if (oldSf.getFullText() === sf.getFullText()) {
+                return oldSf;
+              }
+            }
+            cache.set(sf.fileName, sf);
+          }
+          return sf;
+        };
+    return host;
   }
 
   function resolveFiles(rootNames: string[]) {
@@ -175,12 +198,14 @@ describe('ng program', () => {
       const host = ng.createCompilerHost({options});
       const originalGetSourceFile = host.getSourceFile;
       const fileCache = new Map<string, ts.SourceFile>();
-      host.getSourceFile = (fileName: string) => {
+      host.getSourceFile = (fileName: string, languageVersion: ts.ScriptTarget) => {
         if (fileCache.has(fileName)) {
           return fileCache.get(fileName);
         }
-        const sf = originalGetSourceFile.call(host, fileName);
-        fileCache.set(fileName, sf);
+        const sf = originalGetSourceFile.call(host, fileName, languageVersion);
+        if (sf !== undefined) {
+          fileCache.set(fileName, sf);
+        }
         return sf;
       };
 
@@ -192,9 +217,9 @@ describe('ng program', () => {
 
       // compile without libraries
       const p2 = compile(p1, options, undefined, host).program;
-      expect(written.has(path.resolve(testSupport.basePath, 'built/src/index.js'))).toBe(true);
+      expect(written.has(path.posix.join(testSupport.basePath, 'built/src/index.js'))).toBe(true);
       let ngFactoryContent =
-          written.get(path.resolve(testSupport.basePath, 'built/src/index.ngfactory.js'));
+          written.get(path.posix.join(testSupport.basePath, 'built/src/index.ngfactory.js'));
       expect(ngFactoryContent).toMatch(/Start/);
 
       // no change -> no emit
@@ -204,10 +229,10 @@ describe('ng program', () => {
 
       // change a user file
       written.clear();
-      fileCache.delete(path.resolve(testSupport.basePath, 'src/index.ts'));
+      fileCache.delete(path.posix.join(testSupport.basePath, 'src/index.ts'));
       const p4 = compile(p3, options, undefined, host).program;
       expect(written.size).toBe(1);
-      expect(written.has(path.resolve(testSupport.basePath, 'built/src/index.js'))).toBe(true);
+      expect(written.has(path.posix.join(testSupport.basePath, 'built/src/index.js'))).toBe(true);
 
       // change a file that is input to generated files
       written.clear();
@@ -215,14 +240,14 @@ describe('ng program', () => {
       const p5 = compile(p4, options, undefined, host).program;
       expect(written.size).toBe(1);
       ngFactoryContent =
-          written.get(path.resolve(testSupport.basePath, 'built/src/index.ngfactory.js'));
+          written.get(path.posix.join(testSupport.basePath, 'built/src/index.ngfactory.js'));
       expect(ngFactoryContent).toMatch(/Hello/);
 
       // change a file and create an intermediate program that is not emitted
       written.clear();
-      fileCache.delete(path.resolve(testSupport.basePath, 'src/index.ts'));
+      fileCache.delete(path.posix.join(testSupport.basePath, 'src/index.ts'));
       const p6 = ng.createProgram({
-        rootNames: [path.resolve(testSupport.basePath, 'src/index.ts')],
+        rootNames: [path.posix.join(testSupport.basePath, 'src/index.ts')],
         options: testSupport.createCompilerOptions(options), host,
         oldProgram: p5
       });
@@ -267,56 +292,66 @@ describe('ng program', () => {
           .toBe(false);
     });
 
-    it('should reuse the old ts program completely if nothing changed', () => {
-      testSupport.writeFiles({'src/index.ts': createModuleAndCompSource('main')});
-      // Note: the second compile drops factories for library files,
-      // and therefore changes the structure again
-      const p1 = compile().program;
-      const p2 = compile(p1).program;
-      compile(p2);
-      expect(tsStructureIsReused(p2.getTsProgram())).toBe(StructureIsReused.Completely);
-    });
+    describe(
+        'verify that program structure is reused within tsc in order to speed up incremental compilation',
+        () => {
 
-    it('should reuse the old ts program completely if a template or a ts file changed', () => {
-      testSupport.writeFiles({
-        'src/main.ts': createModuleAndCompSource('main', 'main.html'),
-        'src/main.html': `Some template`,
-        'src/util.ts': `export const x = 1`,
-        'src/index.ts': `
-          export * from './main';
-          export * from './util';
-        `
-      });
-      // Note: the second compile drops factories for library files,
-      // and therefore changes the structure again
-      const p1 = compile().program;
-      const p2 = compile(p1).program;
-      testSupport.writeFiles({
-        'src/main.html': `Another template`,
-        'src/util.ts': `export const x = 2`,
-      });
-      compile(p2);
-      expect(tsStructureIsReused(p2.getTsProgram())).toBe(StructureIsReused.Completely);
-    });
+          it('should reuse the old ts program completely if nothing changed', () => {
+            testSupport.writeFiles({'src/index.ts': createModuleAndCompSource('main')});
+            const host = createWatchModeHost();
+            // Note: the second compile drops factories for library files,
+            // and therefore changes the structure again
+            const p1 = compile(undefined, undefined, undefined, host).program;
+            const p2 = compile(p1, undefined, undefined, host).program;
+            compile(p2, undefined, undefined, host);
+            expect(tsStructureIsReused(p2.getTsProgram())).toBe(StructureIsReused.Completely);
+          });
 
-    it('should not reuse the old ts program if an import changed', () => {
-      testSupport.writeFiles({
-        'src/main.ts': createModuleAndCompSource('main'),
-        'src/util.ts': `export const x = 1`,
-        'src/index.ts': `
-          export * from './main';
-          export * from './util';
-        `
-      });
-      // Note: the second compile drops factories for library files,
-      // and therefore changes the structure again
-      const p1 = compile().program;
-      const p2 = compile(p1).program;
-      testSupport.writeFiles(
-          {'src/util.ts': `import {Injectable} from '@angular/core'; export const x = 1;`});
-      compile(p2);
-      expect(tsStructureIsReused(p2.getTsProgram())).toBe(StructureIsReused.SafeModules);
-    });
+          it('should reuse the old ts program completely if a template or a ts file changed',
+             () => {
+               const host = createWatchModeHost();
+               testSupport.writeFiles({
+                 'src/main.ts': createModuleAndCompSource('main', 'main.html'),
+                 'src/main.html': `Some template`,
+                 'src/util.ts': `export const x = 1`,
+                 'src/index.ts': `
+            export * from './main';
+            export * from './util';
+          `
+               });
+               // Note: the second compile drops factories for library files,
+               // and therefore changes the structure again
+               const p1 = compile(undefined, undefined, undefined, host).program;
+               const p2 = compile(p1, undefined, undefined, host).program;
+               testSupport.writeFiles({
+                 'src/main.html': `Another template`,
+                 'src/util.ts': `export const x = 2`,
+               });
+               compile(p2, undefined, undefined, host);
+               expect(tsStructureIsReused(p2.getTsProgram())).toBe(StructureIsReused.Completely);
+             });
+
+          it('should not reuse the old ts program if an import changed', () => {
+            const host = createWatchModeHost();
+            testSupport.writeFiles({
+              'src/main.ts': createModuleAndCompSource('main'),
+              'src/util.ts': `export const x = 1`,
+              'src/index.ts': `
+            export * from './main';
+            export * from './util';
+          `
+            });
+            // Note: the second compile drops factories for library files,
+            // and therefore changes the structure again
+            const p1 = compile(undefined, undefined, undefined, host).program;
+            const p2 = compile(p1, undefined, undefined, host).program;
+            testSupport.writeFiles(
+                {'src/util.ts': `import {Injectable} from '@angular/core'; export const x = 1;`});
+            compile(p2, undefined, undefined, host);
+            expect(tsStructureIsReused(p2.getTsProgram())).toBe(StructureIsReused.SafeModules);
+          });
+        });
+
   });
 
   it('should not typecheck templates if skipTemplateCodegen is set but fullTemplateTypeCheck is not',
@@ -370,8 +405,8 @@ describe('ng program', () => {
         {rootNames: [path.resolve(testSupport.basePath, 'src/main.ts')], options, host});
     program.loadNgStructureAsync().then(() => {
       program.emit();
-      const factory =
-          fs.readFileSync(path.resolve(testSupport.basePath, 'built/src/main.ngfactory.js'));
+      const ngFactoryPath = path.resolve(testSupport.basePath, 'built/src/main.ngfactory.js');
+      const factory = fs.readFileSync(ngFactoryPath, 'utf8');
       expect(factory).toContain('Hello world!');
       done();
     });
@@ -389,6 +424,22 @@ describe('ng program', () => {
 
     testSupport.shouldExist('built/src/main.ngfactory.js');
     testSupport.shouldExist('built/src/main.ngfactory.d.ts');
+  });
+
+  it('should work with tsx files', () => {
+    // create a temporary ts program to get the list of all files from angular...
+    testSupport.writeFiles({
+      'src/main.tsx': createModuleAndCompSource('main'),
+    });
+    const allRootNames = resolveFiles([path.resolve(testSupport.basePath, 'src/main.tsx')]);
+
+    const program = compile(undefined, {jsx: ts.JsxEmit.React}, allRootNames);
+
+    testSupport.shouldExist('built/src/main.js');
+    testSupport.shouldExist('built/src/main.d.ts');
+    testSupport.shouldExist('built/src/main.ngfactory.js');
+    testSupport.shouldExist('built/src/main.ngfactory.d.ts');
+    testSupport.shouldExist('built/src/main.ngsummary.json');
   });
 
   it('should emit also empty generated files depending on the options', () => {
@@ -415,58 +466,73 @@ describe('ng program', () => {
     });
     const host = ng.createCompilerHost({options});
     const written = new Map < string, {
-      original: ts.SourceFile[]|undefined;
+      original: ReadonlyArray<ts.SourceFile>|undefined;
       data: string;
     }
     > ();
 
     host.writeFile =
         (fileName: string, data: string, writeByteOrderMark: boolean,
-         onError?: (message: string) => void, sourceFiles?: ts.SourceFile[]) => {
+         onError: ((message: string) => void) | undefined,
+         sourceFiles?: ReadonlyArray<ts.SourceFile>) => {
           written.set(fileName, {original: sourceFiles, data});
         };
     const program = ng.createProgram(
         {rootNames: [path.resolve(testSupport.basePath, 'src/index.ts')], options, host});
     program.emit();
 
+    const enum ShouldBe { Empty, EmptyExport, NoneEmpty }
     function assertGenFile(
-        fileName: string, checks: {originalFileName: string, shouldBeEmpty: boolean}) {
-      const writeData = written.get(path.join(testSupport.basePath, fileName));
+        fileName: string, checks: {originalFileName: string, shouldBe: ShouldBe}) {
+      const writeData = written.get(path.posix.join(testSupport.basePath, fileName));
       expect(writeData).toBeTruthy();
-      expect(writeData !.original !.some(
-                 sf => sf.fileName === path.join(testSupport.basePath, checks.originalFileName)))
+      expect(
+          writeData !.original !.some(
+              sf => sf.fileName === path.posix.join(testSupport.basePath, checks.originalFileName)))
           .toBe(true);
-      if (checks.shouldBeEmpty) {
-        expect(writeData !.data).toBe('');
-      } else {
-        expect(writeData !.data).not.toBe('');
+      switch (checks.shouldBe) {
+        case ShouldBe.Empty:
+          expect(writeData !.data).toMatch(/^(\s*\/\*([^*]|\*[^/])*\*\/\s*)?$/);
+          break;
+        case ShouldBe.EmptyExport:
+          expect(writeData !.data)
+              .toMatch(/^((\s*\/\*([^*]|\*[^/])*\*\/\s*)|(\s*export\s*{\s*}\s*;\s*)|())$/);
+          break;
+        case ShouldBe.NoneEmpty:
+          expect(writeData !.data).not.toBe('');
+          break;
       }
     }
 
     assertGenFile(
-        'built/src/util.ngfactory.js', {originalFileName: 'src/util.ts', shouldBeEmpty: true});
+        'built/src/util.ngfactory.js', {originalFileName: 'src/util.ts', shouldBe: ShouldBe.Empty});
     assertGenFile(
-        'built/src/util.ngfactory.d.ts', {originalFileName: 'src/util.ts', shouldBeEmpty: true});
+        'built/src/util.ngfactory.d.ts',
+        {originalFileName: 'src/util.ts', shouldBe: ShouldBe.EmptyExport});
     assertGenFile(
-        'built/src/util.ngsummary.js', {originalFileName: 'src/util.ts', shouldBeEmpty: true});
+        'built/src/util.ngsummary.js', {originalFileName: 'src/util.ts', shouldBe: ShouldBe.Empty});
     assertGenFile(
-        'built/src/util.ngsummary.d.ts', {originalFileName: 'src/util.ts', shouldBeEmpty: true});
+        'built/src/util.ngsummary.d.ts',
+        {originalFileName: 'src/util.ts', shouldBe: ShouldBe.EmptyExport});
     assertGenFile(
-        'built/src/util.ngsummary.json', {originalFileName: 'src/util.ts', shouldBeEmpty: false});
+        'built/src/util.ngsummary.json',
+        {originalFileName: 'src/util.ts', shouldBe: ShouldBe.NoneEmpty});
 
     // Note: we always fill non shim and shim style files as they might
     // be shared by component with and without ViewEncapsulation.
     assertGenFile(
-        'built/src/main.css.ngstyle.js', {originalFileName: 'src/main.ts', shouldBeEmpty: false});
+        'built/src/main.css.ngstyle.js',
+        {originalFileName: 'src/main.ts', shouldBe: ShouldBe.NoneEmpty});
     assertGenFile(
-        'built/src/main.css.ngstyle.d.ts', {originalFileName: 'src/main.ts', shouldBeEmpty: true});
+        'built/src/main.css.ngstyle.d.ts',
+        {originalFileName: 'src/main.ts', shouldBe: ShouldBe.EmptyExport});
     // Note: this file is not empty as we actually generated code for it
     assertGenFile(
         'built/src/main.css.shim.ngstyle.js',
-        {originalFileName: 'src/main.ts', shouldBeEmpty: false});
+        {originalFileName: 'src/main.ts', shouldBe: ShouldBe.NoneEmpty});
     assertGenFile(
         'built/src/main.css.shim.ngstyle.d.ts',
-        {originalFileName: 'src/main.ts', shouldBeEmpty: true});
+        {originalFileName: 'src/main.ts', shouldBe: ShouldBe.EmptyExport});
   });
 
   it('should not emit /// references in .d.ts files', () => {
@@ -493,9 +559,9 @@ describe('ng program', () => {
     const host = ng.createCompilerHost({options});
     const writtenFileNames: string[] = [];
     const oldWriteFile = host.writeFile;
-    host.writeFile = (fileName, data, writeByteOrderMark) => {
+    host.writeFile = (fileName, data, writeByteOrderMark, onError, sourceFiles) => {
       writtenFileNames.push(fileName);
-      oldWriteFile(fileName, data, writeByteOrderMark);
+      oldWriteFile(fileName, data, writeByteOrderMark, onError, sourceFiles);
     };
 
     compile(/*oldProgram*/ undefined, options, /*rootNames*/ undefined, host);
@@ -513,42 +579,43 @@ describe('ng program', () => {
 
   describe('createSrcToOutPathMapper', () => {
     it('should return identity mapping if no outDir is present', () => {
-      const mapper = createSrcToOutPathMapper(undefined, undefined, undefined);
+      const mapper = createSrcToOutPathMapper(undefined, undefined, undefined, path.posix);
       expect(mapper('/tmp/b/y.js')).toBe('/tmp/b/y.js');
     });
 
     it('should return identity mapping if first src and out fileName have same dir', () => {
-      const mapper = createSrcToOutPathMapper('/tmp', '/tmp/a/x.ts', '/tmp/a/x.js');
+      const mapper = createSrcToOutPathMapper('/tmp', '/tmp/a/x.ts', '/tmp/a/x.js', path.posix);
       expect(mapper('/tmp/b/y.js')).toBe('/tmp/b/y.js');
     });
 
     it('should adjust the filename if the outDir is inside of the rootDir', () => {
-      const mapper = createSrcToOutPathMapper('/tmp/out', '/tmp/a/x.ts', '/tmp/out/a/x.js');
+      const mapper =
+          createSrcToOutPathMapper('/tmp/out', '/tmp/a/x.ts', '/tmp/out/a/x.js', path.posix);
       expect(mapper('/tmp/b/y.js')).toBe('/tmp/out/b/y.js');
     });
 
     it('should adjust the filename if the outDir is outside of the rootDir', () => {
-      const mapper = createSrcToOutPathMapper('/out', '/tmp/a/x.ts', '/out/a/x.js');
+      const mapper = createSrcToOutPathMapper('/out', '/tmp/a/x.ts', '/out/a/x.js', path.posix);
       expect(mapper('/tmp/b/y.js')).toBe('/out/b/y.js');
     });
 
     it('should adjust the filename if the common prefix of sampleSrc and sampleOut is outside of outDir',
        () => {
-         const mapper =
-             createSrcToOutPathMapper('/dist/common', '/src/common/x.ts', '/dist/common/x.js');
+         const mapper = createSrcToOutPathMapper(
+             '/dist/common', '/src/common/x.ts', '/dist/common/x.js', path.posix);
          expect(mapper('/src/common/y.js')).toBe('/dist/common/y.js');
        });
 
     it('should work on windows with normalized paths', () => {
       const mapper =
           createSrcToOutPathMapper('c:/tmp/out', 'c:/tmp/a/x.ts', 'c:/tmp/out/a/x.js', path.win32);
-      expect(mapper('c:/tmp/b/y.js')).toBe('c:\\tmp\\out\\b\\y.js');
+      expect(mapper('c:/tmp/b/y.js')).toBe('c:/tmp/out/b/y.js');
     });
 
     it('should work on windows with non-normalized paths', () => {
       const mapper = createSrcToOutPathMapper(
           'c:\\tmp\\out', 'c:\\tmp\\a\\x.ts', 'c:\\tmp\\out\\a\\x.js', path.win32);
-      expect(mapper('c:\\tmp\\b\\y.js')).toBe('c:\\tmp\\out\\b\\y.js');
+      expect(mapper('c:\\tmp\\b\\y.js')).toBe('c:/tmp/out/b/y.js');
     });
   });
 
@@ -606,16 +673,23 @@ describe('ng program', () => {
       expectNoDiagnosticsInProgram(options, program);
       expect(normalizeRoutes(program.listLazyRoutes())).toEqual([
         {
-          module: {name: 'MainModule', filePath: path.resolve(testSupport.basePath, 'src/main.ts')},
-          referencedModule:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
+          module:
+              {name: 'MainModule', filePath: path.posix.join(testSupport.basePath, 'src/main.ts')},
+          referencedModule: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
           route: './child#ChildModule'
         },
         {
-          module:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
-          referencedModule:
-              {name: 'ChildModule2', filePath: path.resolve(testSupport.basePath, 'src/child2.ts')},
+          module: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
+          referencedModule: {
+            name: 'ChildModule2',
+            filePath: path.posix.join(testSupport.basePath, 'src/child2.ts')
+          },
           route: './child2#ChildModule2'
         },
       ]);
@@ -644,8 +718,9 @@ describe('ng program', () => {
       program.listLazyRoutes();
       program.emit();
 
-      const lazyNgFactory =
-          fs.readFileSync(path.resolve(testSupport.basePath, 'built/src/lazy/lazy.ngfactory.js'));
+      const ngFactoryPath = path.resolve(testSupport.basePath, 'built/src/lazy/lazy.ngfactory.js');
+      const lazyNgFactory = fs.readFileSync(ngFactoryPath, 'utf8');
+
       expect(lazyNgFactory).toContain('import * as i1 from "./lazy";');
     });
 
@@ -655,26 +730,37 @@ describe('ng program', () => {
       expectNoDiagnosticsInProgram(options, program);
       expect(normalizeRoutes(program.listLazyRoutes('src/main#MainModule'))).toEqual([
         {
-          module: {name: 'MainModule', filePath: path.resolve(testSupport.basePath, 'src/main.ts')},
-          referencedModule:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
+          module:
+              {name: 'MainModule', filePath: path.posix.join(testSupport.basePath, 'src/main.ts')},
+          referencedModule: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
           route: './child#ChildModule'
         },
         {
-          module:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
-          referencedModule:
-              {name: 'ChildModule2', filePath: path.resolve(testSupport.basePath, 'src/child2.ts')},
+          module: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
+          referencedModule: {
+            name: 'ChildModule2',
+            filePath: path.posix.join(testSupport.basePath, 'src/child2.ts')
+          },
           route: './child2#ChildModule2'
         },
       ]);
 
       expect(normalizeRoutes(program.listLazyRoutes('src/child#ChildModule'))).toEqual([
         {
-          module:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
-          referencedModule:
-              {name: 'ChildModule2', filePath: path.resolve(testSupport.basePath, 'src/child2.ts')},
+          module: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
+          referencedModule: {
+            name: 'ChildModule2',
+            filePath: path.posix.join(testSupport.basePath, 'src/child2.ts')
+          },
           route: './child2#ChildModule2'
         },
       ]);
@@ -701,9 +787,12 @@ describe('ng program', () => {
       const {program, options} = createProgram(['src/main.ts']);
       expect(normalizeRoutes(program.listLazyRoutes('src/main#MainModule'))).toEqual([
         {
-          module: {name: 'MainModule', filePath: path.resolve(testSupport.basePath, 'src/main.ts')},
-          referencedModule:
-              {name: undefined, filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
+          module:
+              {name: 'MainModule', filePath: path.posix.join(testSupport.basePath, 'src/main.ts')},
+          referencedModule: {
+            name: undefined as any as string,  // TODO: Review use of `any` here (#19904)
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
           route: './child'
         },
       ]);
@@ -751,18 +840,21 @@ describe('ng program', () => {
         {
           module: {
             name: 'NestedMainModule',
-            filePath: path.resolve(testSupport.basePath, 'src/nested/main.ts')
+            filePath: path.posix.join(testSupport.basePath, 'src/nested/main.ts')
           },
           referencedModule: {
             name: 'NestedChildModule',
-            filePath: path.resolve(testSupport.basePath, 'src/nested/child.ts')
+            filePath: path.posix.join(testSupport.basePath, 'src/nested/child.ts')
           },
           route: './child#NestedChildModule'
         },
         {
-          module: {name: 'MainModule', filePath: path.resolve(testSupport.basePath, 'src/main.ts')},
-          referencedModule:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
+          module:
+              {name: 'MainModule', filePath: path.posix.join(testSupport.basePath, 'src/main.ts')},
+          referencedModule: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
           route: './child#ChildModule'
         },
       ]);
@@ -788,16 +880,23 @@ describe('ng program', () => {
       expectNoDiagnosticsInProgram(options, program);
       expect(normalizeRoutes(program.listLazyRoutes('src/main#MainModule'))).toEqual([
         {
-          module: {name: 'MainModule', filePath: path.resolve(testSupport.basePath, 'src/main.ts')},
-          referencedModule:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
+          module:
+              {name: 'MainModule', filePath: path.posix.join(testSupport.basePath, 'src/main.ts')},
+          referencedModule: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
           route: './child#ChildModule'
         },
         {
-          module:
-              {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
-          referencedModule:
-              {name: 'ChildModule2', filePath: path.resolve(testSupport.basePath, 'src/child2.ts')},
+          module: {
+            name: 'ChildModule',
+            filePath: path.posix.join(testSupport.basePath, 'src/child.ts')
+          },
+          referencedModule: {
+            name: 'ChildModule2',
+            filePath: path.posix.join(testSupport.basePath, 'src/child2.ts')
+          },
           route: './child2#ChildModule2'
         },
       ]);
@@ -855,9 +954,10 @@ describe('ng program', () => {
       });
       const program = createProgram(['src/main.ts'], {collectAllErrors: true}).program;
       expect(normalizeRoutes(program.listLazyRoutes('src/main#MainModule'))).toEqual([{
-        module: {name: 'MainModule', filePath: path.resolve(testSupport.basePath, 'src/main.ts')},
+        module:
+            {name: 'MainModule', filePath: path.posix.join(testSupport.basePath, 'src/main.ts')},
         referencedModule:
-            {name: 'ChildModule', filePath: path.resolve(testSupport.basePath, 'src/child.ts')},
+            {name: 'ChildModule', filePath: path.posix.join(testSupport.basePath, 'src/child.ts')},
         route: './child#ChildModule'
       }]);
     });
@@ -886,11 +986,11 @@ describe('ng program', () => {
         {rootNames: [path.resolve(testSupport.basePath, 'src/main.ts')], options, host});
     const errorDiags =
         program1.emit().diagnostics.filter(d => d.category === ts.DiagnosticCategory.Error);
-    expect(formatDiagnostics(errorDiags))
-        .toContain(`src/main.ts(5,13): error TS2322: Type '1' is not assignable to type 'string'.`);
-    expect(formatDiagnostics(errorDiags))
+    expect(stripAnsi(formatDiagnostics(errorDiags)))
+        .toContain(`src/main.ts:5:13 - error TS2322: Type '1' is not assignable to type 'string'.`);
+    expect(stripAnsi(formatDiagnostics(errorDiags)))
         .toContain(
-            `src/main.html(1,1): error TS100: Property 'nonExistent' does not exist on type 'MyComp'.`);
+            `src/main.html:1:1 - error TS100: Property 'nonExistent' does not exist on type 'MyComp'.`);
   });
 
   it('should not report emit errors with noEmitOnError=false', () => {
@@ -999,15 +1099,15 @@ describe('ng program', () => {
          });
          const host = ng.createCompilerHost({options});
          const originalGetSourceFile = host.getSourceFile;
-         host.getSourceFile =
-             (fileName: string, languageVersion: ts.ScriptTarget,
-              onError?: ((message: string) => void) | undefined): ts.SourceFile => {
-               // We should never try to load .ngfactory.ts files
-               if (fileName.match(/\.ngfactory\.ts$/)) {
-                 throw new Error(`Non existent ngfactory file: ` + fileName);
-               }
-               return originalGetSourceFile.call(host, fileName, languageVersion, onError);
-             };
+         host.getSourceFile = (fileName: string, languageVersion: ts.ScriptTarget,
+                               onError?: ((message: string) => void) | undefined): ts.SourceFile |
+             undefined => {
+           // We should never try to load .ngfactory.ts files
+           if (fileName.match(/\.ngfactory\.ts$/)) {
+             throw new Error(`Non existent ngfactory file: ` + fileName);
+           }
+           return originalGetSourceFile.call(host, fileName, languageVersion, onError);
+         };
          const program = ng.createProgram({rootNames: allRootNames, options, host});
          const structuralErrors = program.getNgStructuralDiagnostics();
          expect(structuralErrors.length).toBe(1);
@@ -1015,4 +1115,5 @@ describe('ng program', () => {
              .toContain('Function expressions are not supported');
        });
   });
+
 });

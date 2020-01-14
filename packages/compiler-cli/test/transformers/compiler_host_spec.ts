@@ -65,6 +65,11 @@ describe('NgCompilerHost', () => {
           .toBe('@angular/core');
     });
 
+    it('should allow an import o a package whose name contains dot (e.g. @angular.io)', () => {
+      expect(host.fileNameToModuleName('/tmp/node_modules/@angular.io/core.d.ts', '/tmp/main.ts'))
+          .toBe('@angular.io/core');
+    });
+
     it('should use a package import when accessing a package from another package', () => {
       expect(host.fileNameToModuleName(
                  '/tmp/node_modules/mod1/index.d.ts', '/tmp/node_modules/mod2/index.d.ts'))
@@ -141,7 +146,7 @@ describe('NgCompilerHost', () => {
           .toBe('/tmp/src/a/child.d.ts');
     });
 
-    it('should allow to skip the containg file for package imports', () => {
+    it('should allow to skip the containing file for package imports', () => {
       const host =
           createHost({files: {'tmp': {'node_modules': {'@core': {'index.d.ts': dummyModule}}}}});
       expect(host.moduleNameToFileName('@core/index')).toBe('/tmp/node_modules/@core/index.d.ts');
@@ -191,7 +196,55 @@ describe('NgCompilerHost', () => {
       const host = createHost({ngHost});
       expect(host.resourceNameToFileName('a', 'b')).toBe('someResult');
     });
+    it('should resolve Sass imports to generated .css files', () => {
+      const host = createHost({files: {'tmp': {'src': {'a': {'style.css': 'h1: bold'}}}}});
+      expect(host.resourceNameToFileName('./a/style.scss', '/tmp/src/index.ts'))
+          .toBe('/tmp/src/a/style.css');
+    });
+    it('should resolve Less imports to generated .css files', () => {
+      const host = createHost({files: {'tmp': {'src': {'a': {'style.css': 'h1: bold'}}}}});
+      expect(host.resourceNameToFileName('./a/style.less', '/tmp/src/index.ts'))
+          .toBe('/tmp/src/a/style.css');
+    });
+    it('should resolve Stylus imports to generated .css files', () => {
+      const host = createHost({files: {'tmp': {'src': {'a': {'style.css': 'h1: bold'}}}}});
+      expect(host.resourceNameToFileName('./a/style.styl', '/tmp/src/index.ts'))
+          .toBe('/tmp/src/a/style.css');
+    });
+  });
 
+  describe('addGeneratedFile', () => {
+    function generate(path: string, files: {}) {
+      codeGenerator.findGeneratedFileNames.and.returnValue([`${path}.ngfactory.ts`]);
+      codeGenerator.generateFile.and.returnValue(
+          new compiler.GeneratedFile(`${path}.ts`, `${path}.ngfactory.ts`, []));
+      const host = createHost({
+        files,
+        options: {
+          basePath: '/tmp',
+          moduleResolution: ts.ModuleResolutionKind.NodeJs,
+          // Request UMD, which should get default module names
+          module: ts.ModuleKind.UMD
+        },
+      });
+      return host.getSourceFile(`${path}.ngfactory.ts`, ts.ScriptTarget.Latest);
+    }
+
+    it('should include a moduleName when the file is in node_modules', () => {
+      const genSf = generate(
+          '/tmp/node_modules/@angular/core/core',
+          {'tmp': {'node_modules': {'@angular': {'core': {'core.ts': `// some content`}}}}});
+      expect(genSf.moduleName).toBe('@angular/core/core.ngfactory');
+    });
+
+    it('should not get tripped on nested node_modules', () => {
+      const genSf = generate('/tmp/node_modules/lib1/node_modules/lib2/thing', {
+        'tmp': {
+          'node_modules': {'lib1': {'node_modules': {'lib2': {'thing.ts': `// some content`}}}}
+        }
+      });
+      expect(genSf.moduleName).toBe('lib2/thing.ngfactory');
+    });
   });
 
   describe('getSourceFile', () => {
@@ -284,6 +337,22 @@ describe('NgCompilerHost', () => {
       host2.getSourceFile('/tmp/src/index.ts', ts.ScriptTarget.Latest);
       expect(sf.referencedFiles.length).toBe(1);
       expect(sf.referencedFiles[0].fileName).toBe('main.ts');
+    });
+
+    it('should generate for tsx files', () => {
+      codeGenerator.findGeneratedFileNames.and.returnValue(['/tmp/src/index.ngfactory.ts']);
+      codeGenerator.generateFile.and.returnValue(aGeneratedFile);
+      const host = createHost({files: {'tmp': {'src': {'index.tsx': ``}}}});
+
+      const genSf = host.getSourceFile('/tmp/src/index.ngfactory.ts', ts.ScriptTarget.Latest);
+      expect(genSf.text).toBe(aGeneratedFileText);
+
+      const sf = host.getSourceFile('/tmp/src/index.tsx', ts.ScriptTarget.Latest);
+      expect(sf.referencedFiles[0].fileName).toBe('/tmp/src/index.ngfactory.ts');
+
+      // the codegen should have been cached
+      expect(codeGenerator.generateFile).toHaveBeenCalledTimes(1);
+      expect(codeGenerator.findGeneratedFileNames).toHaveBeenCalledTimes(1);
     });
   });
 

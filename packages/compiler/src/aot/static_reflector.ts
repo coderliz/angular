@@ -28,8 +28,9 @@ const IGNORE = {
 
 const USE_VALUE = 'useValue';
 const PROVIDE = 'provide';
-const REFERENCE_SET = new Set([USE_VALUE, 'useFactory', 'data']);
+const REFERENCE_SET = new Set([USE_VALUE, 'useFactory', 'data', 'id', 'loadChildren']);
 const TYPEGUARD_POSTFIX = 'TypeGuard';
+const USE_IF = 'UseIf';
 
 function shouldIgnore(value: any): boolean {
   return value && value.__symbolic == 'ignore';
@@ -41,15 +42,21 @@ function shouldIgnore(value: any): boolean {
  */
 export class StaticReflector implements CompileReflector {
   private annotationCache = new Map<StaticSymbol, any[]>();
+  private shallowAnnotationCache = new Map<StaticSymbol, any[]>();
   private propertyCache = new Map<StaticSymbol, {[key: string]: any[]}>();
   private parameterCache = new Map<StaticSymbol, any[]>();
   private methodCache = new Map<StaticSymbol, {[key: string]: boolean}>();
   private staticCache = new Map<StaticSymbol, string[]>();
   private conversionMap = new Map<StaticSymbol, (context: StaticSymbol, args: any[]) => any>();
-  private injectionToken: StaticSymbol;
-  private opaqueToken: StaticSymbol;
-  ROUTES: StaticSymbol;
-  private ANALYZE_FOR_ENTRY_COMPONENTS: StaticSymbol;
+  private resolvedExternalReferences = new Map<string, StaticSymbol>();
+  // TODO(issue/24571): remove '!'.
+  private injectionToken !: StaticSymbol;
+  // TODO(issue/24571): remove '!'.
+  private opaqueToken !: StaticSymbol;
+  // TODO(issue/24571): remove '!'.
+  ROUTES !: StaticSymbol;
+  // TODO(issue/24571): remove '!'.
+  private ANALYZE_FOR_ENTRY_COMPONENTS !: StaticSymbol;
   private annotationForParentClassWithSummaryKind =
       new Map<CompileSummaryKind, MetadataFactory<any>[]>();
 
@@ -79,13 +86,38 @@ export class StaticReflector implements CompileReflector {
     return this.symbolResolver.getResourcePath(staticSymbol);
   }
 
+  /**
+   * Invalidate the specified `symbols` on program change.
+   * @param symbols
+   */
+  invalidateSymbols(symbols: StaticSymbol[]) {
+    for (const symbol of symbols) {
+      this.annotationCache.delete(symbol);
+      this.shallowAnnotationCache.delete(symbol);
+      this.propertyCache.delete(symbol);
+      this.parameterCache.delete(symbol);
+      this.methodCache.delete(symbol);
+      this.staticCache.delete(symbol);
+      this.conversionMap.delete(symbol);
+    }
+  }
+
   resolveExternalReference(ref: o.ExternalReference, containingFile?: string): StaticSymbol {
+    let key: string|undefined = undefined;
+    if (!containingFile) {
+      key = `${ref.moduleName}:${ref.name}`;
+      const declarationSymbol = this.resolvedExternalReferences.get(key);
+      if (declarationSymbol) return declarationSymbol;
+    }
     const refSymbol =
         this.symbolResolver.getSymbolByModule(ref.moduleName !, ref.name !, containingFile);
     const declarationSymbol = this.findSymbolDeclaration(refSymbol);
     if (!containingFile) {
       this.symbolResolver.recordModuleNameForFileName(refSymbol.filePath, ref.moduleName !);
       this.symbolResolver.recordImportAs(declarationSymbol, refSymbol);
+    }
+    if (key) {
+      this.resolvedExternalReferences.set(key, declarationSymbol);
     }
     return declarationSymbol;
   }
@@ -95,8 +127,9 @@ export class StaticReflector implements CompileReflector {
         this.symbolResolver.getSymbolByModule(moduleUrl, name, containingFile));
   }
 
-  tryFindDeclaration(moduleUrl: string, name: string): StaticSymbol {
-    return this.symbolResolver.ignoreErrorsFor(() => this.findDeclaration(moduleUrl, name));
+  tryFindDeclaration(moduleUrl: string, name: string, containingFile?: string): StaticSymbol {
+    return this.symbolResolver.ignoreErrorsFor(
+        () => this.findDeclaration(moduleUrl, name, containingFile));
   }
 
   findSymbolDeclaration(symbol: StaticSymbol): StaticSymbol {
@@ -113,8 +146,32 @@ export class StaticReflector implements CompileReflector {
     return symbol;
   }
 
+  public tryAnnotations(type: StaticSymbol): any[] {
+    const originalRecorder = this.errorRecorder;
+    this.errorRecorder = (error: any, fileName?: string) => {};
+    try {
+      return this.annotations(type);
+    } finally {
+      this.errorRecorder = originalRecorder;
+    }
+  }
+
   public annotations(type: StaticSymbol): any[] {
-    let annotations = this.annotationCache.get(type);
+    return this._annotations(
+        type, (type: StaticSymbol, decorators: any) => this.simplify(type, decorators),
+        this.annotationCache);
+  }
+
+  public shallowAnnotations(type: StaticSymbol): any[] {
+    return this._annotations(
+        type, (type: StaticSymbol, decorators: any) => this.simplify(type, decorators, true),
+        this.shallowAnnotationCache);
+  }
+
+  private _annotations(
+      type: StaticSymbol, simplify: (type: StaticSymbol, decorators: any) => any,
+      annotationCache: Map<StaticSymbol, any[]>): any[] {
+    let annotations = annotationCache.get(type);
     if (!annotations) {
       annotations = [];
       const classMetadata = this.getTypeMetadata(type);
@@ -125,8 +182,10 @@ export class StaticReflector implements CompileReflector {
       }
       let ownAnnotations: any[] = [];
       if (classMetadata['decorators']) {
-        ownAnnotations = this.simplify(type, classMetadata['decorators']);
-        annotations.push(...ownAnnotations);
+        ownAnnotations = simplify(type, classMetadata['decorators']);
+        if (ownAnnotations) {
+          annotations.push(...ownAnnotations);
+        }
       }
       if (parentType && !this.summaryResolver.isLibraryFile(type.filePath) &&
           this.summaryResolver.isLibraryFile(parentType.filePath)) {
@@ -148,7 +207,7 @@ export class StaticReflector implements CompileReflector {
           }
         }
       }
-      this.annotationCache.set(type, annotations.filter(ann => !!ann));
+      annotationCache.set(type, annotations.filter(ann => !!ann));
     }
     return annotations;
   }
@@ -296,8 +355,17 @@ export class StaticReflector implements CompileReflector {
     const staticMembers = this._staticMembers(type);
     const result: {[key: string]: StaticSymbol} = {};
     for (let name of staticMembers) {
-      result[name.substr(0, name.length - TYPEGUARD_POSTFIX.length)] =
-          this.getStaticSymbol(type.filePath, type.name, [name]);
+      if (name.endsWith(TYPEGUARD_POSTFIX)) {
+        let property = name.substr(0, name.length - TYPEGUARD_POSTFIX.length);
+        let value: any;
+        if (property.endsWith(USE_IF)) {
+          property = name.substr(0, property.length - USE_IF.length);
+          value = USE_IF;
+        } else {
+          value = this.getStaticSymbol(type.filePath, type.name, [name]);
+        }
+        result[property] = value;
+      }
     }
     return result;
   }
@@ -311,6 +379,8 @@ export class StaticReflector implements CompileReflector {
   }
 
   private initializeConversionMap(): void {
+    this._registerDecoratorOrConstructor(
+        this.findDeclaration(ANGULAR_CORE, 'Injectable'), createInjectable);
     this.injectionToken = this.findDeclaration(ANGULAR_CORE, 'InjectionToken');
     this.opaqueToken = this.findDeclaration(ANGULAR_CORE, 'OpaqueToken');
     this.ROUTES = this.tryFindDeclaration(ANGULAR_ROUTER, 'ROUTES');
@@ -318,8 +388,6 @@ export class StaticReflector implements CompileReflector {
         this.findDeclaration(ANGULAR_CORE, 'ANALYZE_FOR_ENTRY_COMPONENTS');
 
     this._registerDecoratorOrConstructor(this.findDeclaration(ANGULAR_CORE, 'Host'), createHost);
-    this._registerDecoratorOrConstructor(
-        this.findDeclaration(ANGULAR_CORE, 'Injectable'), createInjectable);
     this._registerDecoratorOrConstructor(this.findDeclaration(ANGULAR_CORE, 'Self'), createSelf);
     this._registerDecoratorOrConstructor(
         this.findDeclaration(ANGULAR_CORE, 'SkipSelf'), createSkipSelf);
@@ -377,14 +445,14 @@ export class StaticReflector implements CompileReflector {
    */
   private trySimplify(context: StaticSymbol, value: any): any {
     const originalRecorder = this.errorRecorder;
-    this.errorRecorder = (error: any, fileName: string) => {};
+    this.errorRecorder = (error: any, fileName?: string) => {};
     const result = this.simplify(context, value);
     this.errorRecorder = originalRecorder;
     return result;
   }
 
   /** @internal */
-  public simplify(context: StaticSymbol, value: any): any {
+  public simplify(context: StaticSymbol, value: any, lazy: boolean = false): any {
     const self = this;
     let scope = BindingScope.empty;
     const calling = new Map<StaticSymbol, boolean>();
@@ -507,7 +575,7 @@ export class StaticReflector implements CompileReflector {
         if (isPrimitive(expression)) {
           return expression;
         }
-        if (expression instanceof Array) {
+        if (Array.isArray(expression)) {
           const result: any[] = [];
           for (const item of (<any>expression)) {
             // Check for a spread expression
@@ -745,7 +813,7 @@ export class StaticReflector implements CompileReflector {
 
     let result: any;
     try {
-      result = simplifyInContext(context, value, 0, 0);
+      result = simplifyInContext(context, value, 0, lazy ? 1 : 0);
     } catch (e) {
       if (this.errorRecorder) {
         this.reportError(e, context);
@@ -988,7 +1056,7 @@ function formatMetadataMessageChain(
   const next: FormattedMessageChain|undefined = chain.next ?
       formatMetadataMessageChain(chain.next, advise) :
       advise ? {message: advise} : undefined;
-  return {message, position, next};
+  return {message, position, next: next ? [next] : undefined};
 }
 
 function formatMetadataError(e: Error, context: StaticSymbol): Error {

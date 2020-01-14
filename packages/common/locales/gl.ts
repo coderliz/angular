@@ -9,13 +9,18 @@
 // THIS CODE IS GENERATED - DO NOT MODIFY
 // See angular/tools/gulp-tasks/cldr/extract.js
 
+const u = undefined;
+
+function plural(n: number): number {
+  let i = Math.floor(Math.abs(n)), v = n.toString().replace(/^[^.]*\.?/, '').length;
+  if (i === 1 && v === 0) return 1;
+  return 5;
+}
+
 export default [
   'gl',
-  [
-    ['a.m.', 'p.m.'],
-    ,
-  ],
-  ,
+  [['a.m.', 'p.m.'], u, u],
+  u,
   [
     ['d.', 'l.', 'm.', 'm.', 'x.', 'v.', 's.'],
     ['dom.', 'luns', 'mar.', 'mér.', 'xov.', 'ven.', 'sáb.'],
@@ -30,7 +35,8 @@ export default [
   [
     ['x.', 'f.', 'm.', 'a.', 'm.', 'x.', 'x.', 'a.', 's.', 'o.', 'n.', 'd.'],
     [
-      'xan.', 'feb.', 'mar.', 'abr.', 'maio', 'xuño', 'xul.', 'ago.', 'set.', 'out.', 'nov.', 'dec.'
+      'xan.', 'feb.', 'mar.', 'abr.', 'maio', 'xuño', 'xul.', 'ago.', 'set.', 'out.', 'nov.',
+      'dec.'
     ],
     [
       'xaneiro', 'febreiro', 'marzo', 'abril', 'maio', 'xuño', 'xullo', 'agosto', 'setembro',
@@ -40,27 +46,36 @@ export default [
   [
     ['X', 'F', 'M', 'A', 'M', 'X', 'X', 'A', 'S', 'O', 'N', 'D'],
     [
-      'Xan.', 'Feb.', 'Mar.', 'Abr.', 'Maio', 'Xuño', 'Xul.', 'Ago.', 'Set.', 'Out.', 'Nov.', 'Dec.'
+      'Xan.', 'Feb.', 'Mar.', 'Abr.', 'Maio', 'Xuño', 'Xul.', 'Ago.', 'Set.', 'Out.', 'Nov.',
+      'Dec.'
     ],
     [
       'Xaneiro', 'Febreiro', 'Marzo', 'Abril', 'Maio', 'Xuño', 'Xullo', 'Agosto', 'Setembro',
       'Outubro', 'Novembro', 'Decembro'
     ]
   ],
-  [['a.C.', 'd.C.'], , ['antes de Cristo', 'despois de Cristo']], 1, [6, 0],
-  ['dd/MM/yy', 'dd/MM/y', 'd \'de\' MMMM \'de\' y', 'EEEE, d \'de\' MMMM \'de\' y'],
+  [['a.C.', 'd.C.'], u, ['antes de Cristo', 'despois de Cristo']],
+  1,
+  [6, 0],
+  ['dd/MM/yy', 'd \'de\' MMM \'de\' y', 'd \'de\' MMMM \'de\' y', 'EEEE, d \'de\' MMMM \'de\' y'],
   ['HH:mm', 'HH:mm:ss', 'HH:mm:ss z', 'HH:mm:ss zzzz'],
-  [
-    '{0}, {1}',
-    ,
-    '{0} \'do\' {1}',
-  ],
+  ['{0}, {1}', u, '{0} \'do\' {1}', u],
   [',', '.', ';', '%', '+', '-', 'E', '×', '‰', '∞', 'NaN', ':'],
-  ['#,##0.###', '#,##0 %', '#,##0.00 ¤', '#E0'], '€', 'Euro',
-  function(n: number):
-      number {
-        let i = Math.floor(Math.abs(n)), v = n.toString().replace(/^[^.]*\.?/, '').length;
-        if (i === 1 && v === 0) return 1;
-        return 5;
-      }
+  ['#,##0.###', '#,##0 %', '#,##0.00 ¤', '#E0'],
+  'EUR',
+  '€',
+  'euro',
+  {
+    'BYN': [u, 'Br'],
+    'ESP': ['₧'],
+    'JPY': ['JP¥', '¥'],
+    'KMF': [u, 'FC'],
+    'MXN': ['$MX', '$'],
+    'RUB': [u, 'руб'],
+    'THB': ['฿'],
+    'TWD': ['NT$'],
+    'XCD': [u, '$']
+  },
+  'ltr',
+  plural
 ];

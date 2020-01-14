@@ -13,7 +13,6 @@
     "test"
   ],
   "scopes": [
-    "aio",
     "animations",
     "bazel",
     "benchpress",
@@ -21,9 +20,13 @@
     "compiler",
     "compiler-cli",
     "core",
+    "docs-infra",
+    "elements",
     "forms",
     "http",
+    "ivy",
     "language-service",
+    "ngcc",
     "platform-browser",
     "platform-browser-dynamic",
     "platform-server",
@@ -33,6 +36,7 @@
     "service-worker",
     "upgrade",
     "packaging",
-    "changelog"
+    "changelog",
+    "zone.js"
   ]
 }

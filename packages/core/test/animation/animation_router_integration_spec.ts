@@ -7,6 +7,7 @@
  */
 import {animate, animateChild, group, query, sequence, style, transition, trigger, ɵAnimationGroupPlayer as AnimationGroupPlayer} from '@angular/animations';
 import {AnimationDriver, ɵAnimationEngine} from '@angular/animations/browser';
+import {TransitionAnimationPlayer} from '@angular/animations/browser/src/render/transition_animation_engine';
 import {MockAnimationDriver, MockAnimationPlayer} from '@angular/animations/browser/testing';
 import {Component, HostBinding} from '@angular/core';
 import {TestBed, fakeAsync, flushMicrotasks, tick} from '@angular/core/testing';
@@ -14,9 +15,9 @@ import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {ActivatedRoute, Router, RouterOutlet} from '@angular/router';
 import {RouterTestingModule} from '@angular/router/testing';
 
-export function main() {
+(function() {
   // these tests are only mean't to be run within the DOM (for now)
-  if (typeof Element == 'undefined') return;
+  if (isNode) return;
 
   describe('Animation Router Tests', function() {
     function getLog(): MockAnimationPlayer[] {
@@ -111,7 +112,7 @@ export function main() {
            ])]
          });
 
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(ContainerCmp);
          const cmp = fixture.componentInstance;
          cmp.router.initialNavigation();
@@ -130,7 +131,8 @@ export function main() {
          engine.flush();
 
          const player = engine.players[0] !;
-         const groupPlayer = player.getRealPlayer() as AnimationGroupPlayer;
+         const groupPlayer =
+             (player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer;
          const players = groupPlayer.players as MockAnimationPlayer[];
 
          expect(players.length).toEqual(2);
@@ -218,7 +220,7 @@ export function main() {
            ])]
          });
 
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(ContainerCmp);
          const cmp = fixture.componentInstance;
          cmp.router.initialNavigation();
@@ -237,7 +239,8 @@ export function main() {
          engine.flush();
 
          const player = engine.players[0] !;
-         const groupPlayer = player.getRealPlayer() as AnimationGroupPlayer;
+         const groupPlayer =
+             (player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer;
          const players = groupPlayer.players as MockAnimationPlayer[];
 
          expect(players.length).toEqual(2);
@@ -322,7 +325,7 @@ export function main() {
            ])]
          });
 
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(ContainerCmp);
          const cmp = fixture.componentInstance;
          cmp.router.initialNavigation();
@@ -341,7 +344,8 @@ export function main() {
          engine.flush();
 
          const player = engine.players[0] !;
-         const groupPlayer = player.getRealPlayer() as AnimationGroupPlayer;
+         const groupPlayer =
+             (player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer;
          const players = groupPlayer.players as MockAnimationPlayer[];
 
          expect(players.length).toEqual(2);
@@ -413,7 +417,7 @@ export function main() {
            ])]
          });
 
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(ContainerCmp);
          const cmp = fixture.componentInstance;
          cmp.router.initialNavigation();
@@ -437,10 +441,11 @@ export function main() {
          expect(players.length).toEqual(1);
          const [p1] = players;
 
-         const innerPlayers = p1.getRealPlayer().players;
+         const innerPlayers =
+             ((p1 as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer).players;
          expect(innerPlayers.length).toEqual(2);
 
-         const [ip1, ip2] = innerPlayers;
+         const [ip1, ip2] = innerPlayers as any;
          expect(ip1.element.innerText).toEqual('page1');
          expect(ip2.element.innerText).toEqual('page2');
        }));
@@ -519,7 +524,7 @@ export function main() {
          expect(p2.element.getAttribute('data-depth')).toEqual('1');
        }));
   });
-}
+});
 
 function makeAnimationData(value: string, params: {[key: string]: any} = {}): {[key: string]: any} {
   return {'animation': {value, params}};

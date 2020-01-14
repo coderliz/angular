@@ -88,14 +88,22 @@ export class MockServerStateBuilder {
     return this;
   }
 
-  build(): MockServerState { return new MockServerState(this.resources, this.errors); }
+  build(): MockServerState {
+    // Take a "snapshot" of the current `resources` and `errors`.
+    const resources = new Map(this.resources.entries());
+    const errors = new Set(this.errors.values());
+
+    return new MockServerState(resources, errors);
+  }
 }
 
 export class MockServerState {
   private requests: Request[] = [];
   private gate: Promise<void> = Promise.resolve();
   private resolve: Function|null = null;
-  private resolveNextRequest: Function;
+  // TODO(issue/24571): remove '!'.
+  private resolveNextRequest !: Function;
+  online = true;
   nextRequest: Promise<Request>;
 
   constructor(private resources: Map<string, Response>, private errors: Set<string>) {
@@ -108,11 +116,16 @@ export class MockServerState {
 
     await this.gate;
 
-    if (req.credentials === 'include') {
+    if (!this.online) {
+      throw new Error('Offline.');
+    }
+
+    this.requests.push(req);
+
+    if ((req.credentials === 'include') || (req.mode === 'no-cors')) {
       return new MockResponse(null, {status: 0, statusText: '', type: 'opaque'});
     }
     const url = req.url.split('?')[0];
-    this.requests.push(req);
     if (this.resources.has(url)) {
       return this.resources.get(url) !.clone();
     }
@@ -171,6 +184,7 @@ export class MockServerState {
     this.nextRequest = new Promise(resolve => { this.resolveNextRequest = resolve; });
     this.gate = Promise.resolve();
     this.resolve = null;
+    this.online = true;
   }
 }
 
@@ -180,6 +194,7 @@ export function tmpManifestSingleAssetGroup(fs: MockFileSystem): Manifest {
   files.forEach(path => { hashTable[path] = fs.lookup(path) !.hash; });
   return {
     configVersion: 1,
+    timestamp: 1234567890123,
     index: '/index.html',
     assetGroups: [
       {
@@ -190,16 +205,20 @@ export function tmpManifestSingleAssetGroup(fs: MockFileSystem): Manifest {
         patterns: [],
       },
     ],
-    hashTable,
+    navigationUrls: [], hashTable,
   };
 }
 
-export function tmpHashTableForFs(fs: MockFileSystem): {[url: string]: string} {
+export function tmpHashTableForFs(
+    fs: MockFileSystem, breakHashes: {[url: string]: boolean} = {}): {[url: string]: string} {
   const table: {[url: string]: string} = {};
   fs.list().forEach(path => {
     const file = fs.lookup(path) !;
     if (file.hashThisFile) {
       table[path] = file.hash;
+      if (breakHashes[path]) {
+        table[path] = table[path].split('').reverse().join('');
+      }
     }
   });
   return table;

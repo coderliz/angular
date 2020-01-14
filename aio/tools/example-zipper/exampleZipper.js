@@ -19,9 +19,9 @@ class ExampleZipper {
     this.exampleTsconfig = path.join(__dirname, '../examples/shared/boilerplate/systemjs/src/tsconfig.json');
     this.customizer = new PackageJsonCustomizer();
 
-    let gpathPlnkr = path.join(sourceDirName, '**/*plnkr.json');
+    let gpathStackblitz = path.join(sourceDirName, '**/*stackblitz.json');
     let gpathZipper = path.join(sourceDirName, '**/zipper.json');
-    let configFileNames = globby.sync([gpathPlnkr, gpathZipper], { ignore: ['**/node_modules/**'] });
+    let configFileNames = globby.sync([gpathStackblitz, gpathZipper], { ignore: ['**/node_modules/**'] });
     configFileNames.forEach((configFileName) => {
       this._zipExample(configFileName, sourceDirName, outputDirName);
     });
@@ -54,6 +54,19 @@ class ExampleZipper {
     }
   }
 
+  // rename a custom main.ts or index.html file
+  _renameFile(file, exampleType) {
+    if (/src\/main[-.]\w+\.ts$/.test(file) && exampleType !== 'universal') {
+      return 'src/main.ts';
+    }
+
+    if (/src\/index[-.]\w+\.html$/.test(file)) {
+      return 'src/index.html';
+    }
+
+    return file;
+  }
+
   _zipExample(configFileName, sourceDirName, outputDirName) {
     let json = require(configFileName, 'utf-8');
     const basePath = json.basePath || '';
@@ -64,36 +77,41 @@ class ExampleZipper {
     if (relativeDirName.indexOf('/') !== -1) { // Special example
       exampleZipName = relativeDirName.split('/').join('-');
     } else {
-      exampleZipName = jsonFileName.replace(/(plnkr|zipper).json/, relativeDirName);
+      exampleZipName = jsonFileName.replace(/(stackblitz|zipper).json/, relativeDirName);
     }
 
     const exampleDirName = path.dirname(configFileName);
     const outputFileName = path.join(outputDirName, relativeDirName, exampleZipName + '.zip');
-    let defaultIncludes = ['**/*.ts', '**/*.js', '**/*.es6', '**/*.css', '**/*.html', '**/*.md', '**/*.json', '**/*.png'];
+    let defaultIncludes = ['**/*.ts', '**/*.js', '**/*.es6', '**/*.css', '**/*.html', '**/*.md', '**/*.json', '**/*.png', '**/*.svg'];
     let alwaysIncludes = [
-      'bs-config.json',
-      'protractor.conf.js',
-      '.angular-cli.json',
       '.editorconfig',
       '.gitignore',
-      'tslint.json',
-      'karma-test-shim.js',
+      'angular.json',
+      'browserslist',
+      'bs-config.json',
       'karma.conf.js',
-      'src/testing/**/*',
-      'src/.babelrc',
+      'karma-test-shim.js',
+      'tsconfig.*',
+      'tslint.*',
+      'e2e/protractor.conf.js',
+      'e2e/tsconfig.json',
       'src/favicon.ico',
-      'src/typings.d.ts'
+      'src/polyfills.ts',
+      'src/test.ts',
+      'src/typings.d.ts',
+      'src/environments/**/*',
+      'src/testing/**/*',
+      // Only ignore root package.json
+      '!package.json'
     ];
-    var defaultExcludes = [
+    var alwaysExcludes = [
       '!**/bs-config.e2e.json',
-      '!**/*plnkr.*',
+      '!**/*stackblitz.*',
       '!**/*zipper.*',
       '!**/systemjs.config.js',
       '!**/npm-debug.log',
-      '!**/package.json',
       '!**/example-config.json',
       '!**/wallaby.js',
-      '!**/package.webpack.json',
       // AoT related files
       '!**/aot/**/*.*',
       '!**/*-aot.*'
@@ -132,13 +150,14 @@ class ExampleZipper {
       }
     });
 
-    Array.prototype.push.apply(gpaths, defaultExcludes);
+    Array.prototype.push.apply(gpaths, alwaysExcludes);
 
     let fileNames = globby.sync(gpaths, { ignore: ['**/node_modules/**']});
 
     let zip = this._createZipArchive(outputFileName);
     fileNames.forEach((fileName) => {
       let relativePath = path.relative(exampleDirName, fileName);
+      relativePath = this._renameFile(relativePath, exampleType);
       let content = fs.readFileSync(fileName, 'utf8');
       let extn = path.extname(fileName).substr(1);
       // if we don't need to clean up the file then we can do the following.

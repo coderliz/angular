@@ -6,10 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {fakeAsync} from '@angular/core/testing/src/fake_async';
-import {SyncAsync, escapeRegExp, splitAtColon, utf8Encode} from '../src/util';
+import {escapeRegExp, splitAtColon, stringify, utf8Encode} from '../src/util';
 
-export function main() {
+{
   describe('util', () => {
     describe('splitAtColon', () => {
       it('should split when a single ":" is present', () => {
@@ -71,9 +70,13 @@ export function main() {
           ['\uDEEE', '\xED\xBB\xAE'],
           ['\uDFFF', '\xED\xBF\xBF'],
         ];
-        tests.forEach(
-            ([input, output]: [string, string]) => { expect(utf8Encode(input)).toEqual(output); });
+        tests.forEach(([input, output]) => { expect(utf8Encode(input)).toEqual(output); });
       });
+    });
+
+    describe('stringify()', () => {
+      it('should handle objects with no prototype.',
+         () => { expect(stringify(Object.create(null))).toEqual('object'); });
     });
   });
 }

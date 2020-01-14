@@ -6,11 +6,11 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Inject, InjectionToken, Injector, Optional, ReflectiveKey, Self, SkipSelf, forwardRef} from '@angular/core';
-import {getOriginalError} from '@angular/core/src/errors';
+import {Inject, InjectFlags, InjectionToken, Injector, Optional, Self, SkipSelf, forwardRef} from '@angular/core';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
+import {ivyEnabled, modifiedInIvy} from '@angular/private/testing';
 
-import {stringify} from '../../src/util';
+import {stringify} from '../../src/util/stringify';
 
 class Engine {
   static PROVIDER = {provide: Engine, useClass: Engine, deps: []};
@@ -75,9 +75,9 @@ class NoAnnotations {
   constructor(secretDependency: any) {}
 }
 
-function factoryFn(a: any) {}
+function factoryFn(a: any){}
 
-export function main() {
+{
   const dynamicProviders = [
     {provide: 'provider0', useValue: 1}, {provide: 'provider1', useValue: 1},
     {provide: 'provider2', useValue: 1}, {provide: 'provider3', useValue: 1},
@@ -87,7 +87,7 @@ export function main() {
     {provide: 'provider10', useValue: 1}
   ];
 
-  describe(`StaticInjector`, () => {
+  modifiedInIvy('Ivy uses R3Injector').describe(`StaticInjector`, () => {
 
     it('should instantiate a class without dependencies', () => {
       const injector = Injector.create([Engine.PROVIDER]);
@@ -217,7 +217,7 @@ export function main() {
       const injector = Injector.create([CarWithOptionalEngine.PROVIDER]);
 
       const car = injector.get<CarWithOptionalEngine>(CarWithOptionalEngine);
-      expect(car.engine).toEqual(null);
+      expect(car.engine).toBeNull();
     });
 
     it('should flatten passed-in providers', () => {
@@ -288,8 +288,8 @@ export function main() {
           Injector.create([CarWithDashboard.PROVIDER, Engine.PROVIDER, Dashboard.PROVIDER]);
       expect(() => injector.get(CarWithDashboard))
           .toThrowError(
-              `StaticInjectorError[${stringify(CarWithDashboard)} -> ${stringify(Dashboard)} -> DashboardSoftware]: 
-  NullInjectorError: No provider for DashboardSoftware!`);
+              `StaticInjectorError[${stringify(CarWithDashboard)} -> ${stringify(Dashboard)} -> DashboardSoftware]: \n` +
+              '  NullInjectorError: No provider for DashboardSoftware!');
     });
 
     it('should throw when trying to instantiate a cyclic dependency', () => {
@@ -397,7 +397,7 @@ export function main() {
     });
   });
 
-  describe('depedency resolution', () => {
+  describe('dependency resolution', () => {
     describe('@Self()', () => {
       it('should return a dependency from self', () => {
         const inj = Injector.create([
@@ -414,9 +414,41 @@ export function main() {
             [{provide: Car, useFactory: (e: Engine) => new Car(e), deps: [[Engine, new Self()]]}],
             parent);
 
+        const injectorName = ivyEnabled ? `R3Injector` : `StaticInjector`;
+
         expect(() => child.get(Car))
-            .toThrowError(`StaticInjectorError[${stringify(Car)} -> ${stringify(Engine)}]: 
-  NullInjectorError: No provider for Engine!`);
+            .toThrowError(
+                `${injectorName}Error[${stringify(Car)} -> ${stringify(Engine)}]: \n` +
+                '  NullInjectorError: No provider for Engine!');
+      });
+
+      it('should return a default value when not requested provider on self', () => {
+        const car = new SportsCar(new Engine());
+        const injector = Injector.create([]);
+        expect(injector.get<Car|null>(Car, null, InjectFlags.Self)).toBeNull();
+        expect(injector.get<Car>(Car, car, InjectFlags.Self)).toBe(car);
+      });
+
+      it('should return a default value when not requested provider on self and optional', () => {
+        const flags = InjectFlags.Self | InjectFlags.Optional;
+        const injector = Injector.create([]);
+        expect(injector.get<Car|null>(Car, null, InjectFlags.Self)).toBeNull();
+        expect(injector.get<Car|number>(Car, 0, flags)).toBe(0);
+      });
+
+      it(`should return null when not requested provider on self and optional`, () => {
+        const flags = InjectFlags.Self | InjectFlags.Optional;
+        const injector = Injector.create([]);
+        expect(injector.get<Car|null>(Car, undefined, flags)).toBeNull();
+      });
+
+      it('should throw error when not requested provider on self', () => {
+        const injector = Injector.create([]);
+        const injectorName = ivyEnabled ? `R3Injector` : `StaticInjector`;
+        expect(() => injector.get(Car, undefined, InjectFlags.Self))
+            .toThrowError(
+                `${injectorName}Error[${stringify(Car)}]: \n` +
+                `  NullInjectorError: No provider for ${stringify(Car)}!`);
       });
     });
 
@@ -472,8 +504,11 @@ export function main() {
 
   describe('displayName', () => {
     it('should work', () => {
+      const ivyError = `R3Injector[Engine, BrokenEngine, InjectionToken INJECTOR]`;
+      const viewEngineError =
+          `StaticInjector[Injector, InjectionToken INJECTOR, Engine, BrokenEngine]`;
       expect(Injector.create([Engine.PROVIDER, {provide: BrokenEngine, useValue: null}]).toString())
-          .toEqual('StaticInjector[Injector, Engine, BrokenEngine]');
+          .toEqual(ivyEnabled ? ivyError : viewEngineError);
     });
   });
 }

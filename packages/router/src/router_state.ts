@@ -7,9 +7,8 @@
  */
 
 import {Type} from '@angular/core';
-import {BehaviorSubject} from 'rxjs/BehaviorSubject';
-import {Observable} from 'rxjs/Observable';
-import {map} from 'rxjs/operator/map';
+import {BehaviorSubject, Observable} from 'rxjs';
+import {map} from 'rxjs/operators';
 
 import {Data, ResolveData, Route} from './config';
 import {PRIMARY_OUTLET, ParamMap, Params, convertToParamMap} from './shared';
@@ -18,10 +17,18 @@ import {shallowEqual, shallowEqualArrays} from './utils/collection';
 import {Tree, TreeNode} from './utils/tree';
 
 
+
 /**
- * @whatItDoes Represents the state of the router.
+ * Represents the state of the router as a tree of activated routes.
  *
- * @howToUse
+ * @usageNotes
+ *
+ * Every node in the route tree is an `ActivatedRoute` instance
+ * that knows about the "consumed" URL segments, the extracted parameters,
+ * and the resolved data.
+ * Use the `ActivatedRoute` properties to traverse the tree from any node.
+ *
+ * ### Example
  *
  * ```
  * @Component({templateUrl:'template.html'})
@@ -36,13 +43,9 @@ import {Tree, TreeNode} from './utils/tree';
  * }
  * ```
  *
- * @description
- * RouterState is a tree of activated routes. Every node in this tree knows about the "consumed" URL
- * segments, the extracted parameters, and the resolved data.
+ * @see `ActivatedRoute`
  *
- * See {@link ActivatedRoute} for more information.
- *
- * @stable
+ * @publicApi
  */
 export class RouterState extends Tree<ActivatedRoute> {
   /** @internal */
@@ -84,87 +87,83 @@ export function createEmptyStateSnapshot(
 }
 
 /**
- * @whatItDoes Contains the information about a route associated with a component loaded in an
- * outlet.
- * An `ActivatedRoute` can also be used to traverse the router state tree.
+ * Provides access to information about a route associated with a component
+ * that is loaded in an outlet.
+ * Use to traverse the `RouterState` tree and extract information from nodes.
  *
- * @howToUse
+ * {@example router/activated-route/module.ts region="activated-route"
+ *     header="activated-route.component.ts"}
  *
- * ```
- * @Component({...})
- * class MyComponent {
- *   constructor(route: ActivatedRoute) {
- *     const id: Observable<string> = route.params.map(p => p.id);
- *     const url: Observable<string> = route.url.map(segments => segments.join(''));
- *     // route.data includes both `data` and `resolve`
- *     const user = route.data.map(d => d.user);
- *   }
- * }
- * ```
- *
- * @stable
+ * @publicApi
  */
 export class ActivatedRoute {
   /** The current snapshot of this route */
-  snapshot: ActivatedRouteSnapshot;
+  snapshot !: ActivatedRouteSnapshot;
   /** @internal */
   _futureSnapshot: ActivatedRouteSnapshot;
   /** @internal */
-  _routerState: RouterState;
+  _routerState !: RouterState;
   /** @internal */
-  _paramMap: Observable<ParamMap>;
+  _paramMap !: Observable<ParamMap>;
   /** @internal */
-  _queryParamMap: Observable<ParamMap>;
+  _queryParamMap !: Observable<ParamMap>;
 
   /** @internal */
   constructor(
-      /** An observable of the URL segments matched by this route */
+      /** An observable of the URL segments matched by this route. */
       public url: Observable<UrlSegment[]>,
-      /** An observable of the matrix parameters scoped to this route */
+      /** An observable of the matrix parameters scoped to this route. */
       public params: Observable<Params>,
-      /** An observable of the query parameters shared by all the routes */
+      /** An observable of the query parameters shared by all the routes. */
       public queryParams: Observable<Params>,
-      /** An observable of the URL fragment shared by all the routes */
+      /** An observable of the URL fragment shared by all the routes. */
       public fragment: Observable<string>,
       /** An observable of the static and resolved data of this route. */
       public data: Observable<Data>,
-      /** The outlet name of the route. It's a constant */
+      /** The outlet name of the route, a constant. */
       public outlet: string,
-      /** The component of the route. It's a constant */
+      /** The component of the route, a constant. */
       // TODO(vsavkin): remove |string
       public component: Type<any>|string|null, futureSnapshot: ActivatedRouteSnapshot) {
     this._futureSnapshot = futureSnapshot;
   }
 
-  /** The configuration used to match this route */
+  /** The configuration used to match this route. */
   get routeConfig(): Route|null { return this._futureSnapshot.routeConfig; }
 
-  /** The root of the router state */
+  /** The root of the router state. */
   get root(): ActivatedRoute { return this._routerState.root; }
 
-  /** The parent of this route in the router state tree */
+  /** The parent of this route in the router state tree. */
   get parent(): ActivatedRoute|null { return this._routerState.parent(this); }
 
-  /** The first child of this route in the router state tree */
+  /** The first child of this route in the router state tree. */
   get firstChild(): ActivatedRoute|null { return this._routerState.firstChild(this); }
 
-  /** The children of this route in the router state tree */
+  /** The children of this route in the router state tree. */
   get children(): ActivatedRoute[] { return this._routerState.children(this); }
 
-  /** The path from the root of the router state tree to this route */
+  /** The path from the root of the router state tree to this route. */
   get pathFromRoot(): ActivatedRoute[] { return this._routerState.pathFromRoot(this); }
 
+  /** An Observable that contains a map of the required and optional parameters
+   * specific to the route.
+   * The map supports retrieving single and multiple values from the same parameter. */
   get paramMap(): Observable<ParamMap> {
     if (!this._paramMap) {
-      this._paramMap = map.call(this.params, (p: Params): ParamMap => convertToParamMap(p));
+      this._paramMap = this.params.pipe(map((p: Params): ParamMap => convertToParamMap(p)));
     }
     return this._paramMap;
   }
 
+  /**
+   * An Observable that contains a map of the query parameters available to all routes.
+   * The map supports retrieving single and multiple values from the query parameter.
+   */
   get queryParamMap(): Observable<ParamMap> {
     if (!this._queryParamMap) {
       this._queryParamMap =
-          map.call(this.queryParams, (p: Params): ParamMap => convertToParamMap(p));
+          this.queryParams.pipe(map((p: Params): ParamMap => convertToParamMap(p)));
     }
     return this._queryParamMap;
   }
@@ -174,6 +173,8 @@ export class ActivatedRoute {
   }
 }
 
+export type ParamsInheritanceStrategy = 'emptyOnly' | 'always';
+
 /** @internal */
 export type Inherited = {
   params: Params,
@@ -181,29 +182,43 @@ export type Inherited = {
   resolve: Data,
 };
 
-/** @internal */
-export function inheritedParamsDataResolve(route: ActivatedRouteSnapshot): Inherited {
-  const pathToRoot = route.pathFromRoot;
+/**
+ * Returns the inherited params, data, and resolve for a given route.
+ * By default, this only inherits values up to the nearest path-less or component-less route.
+ * @internal
+ */
+export function inheritedParamsDataResolve(
+    route: ActivatedRouteSnapshot,
+    paramsInheritanceStrategy: ParamsInheritanceStrategy = 'emptyOnly'): Inherited {
+  const pathFromRoot = route.pathFromRoot;
 
-  let inhertingStartingFrom = pathToRoot.length - 1;
+  let inheritingStartingFrom = 0;
+  if (paramsInheritanceStrategy !== 'always') {
+    inheritingStartingFrom = pathFromRoot.length - 1;
 
-  while (inhertingStartingFrom >= 1) {
-    const current = pathToRoot[inhertingStartingFrom];
-    const parent = pathToRoot[inhertingStartingFrom - 1];
-    // current route is an empty path => inherits its parent's params and data
-    if (current.routeConfig && current.routeConfig.path === '') {
-      inhertingStartingFrom--;
+    while (inheritingStartingFrom >= 1) {
+      const current = pathFromRoot[inheritingStartingFrom];
+      const parent = pathFromRoot[inheritingStartingFrom - 1];
+      // current route is an empty path => inherits its parent's params and data
+      if (current.routeConfig && current.routeConfig.path === '') {
+        inheritingStartingFrom--;
 
-      // parent is componentless => current route should inherit its params and data
-    } else if (!parent.component) {
-      inhertingStartingFrom--;
+        // parent is componentless => current route should inherit its params and data
+      } else if (!parent.component) {
+        inheritingStartingFrom--;
 
-    } else {
-      break;
+      } else {
+        break;
+      }
     }
   }
 
-  return pathToRoot.slice(inhertingStartingFrom).reduce((res, curr) => {
+  return flattenInherited(pathFromRoot.slice(inheritingStartingFrom));
+}
+
+/** @internal */
+function flattenInherited(pathFromRoot: ActivatedRouteSnapshot[]): Inherited {
+  return pathFromRoot.reduce((res, curr) => {
     const params = {...res.params, ...curr.params};
     const data = {...res.data, ...curr.data};
     const resolve = {...res.resolve, ...curr._resolvedData};
@@ -212,12 +227,11 @@ export function inheritedParamsDataResolve(route: ActivatedRouteSnapshot): Inher
 }
 
 /**
- * @whatItDoes Contains the information about a route associated with a component loaded in an
- * outlet
- * at a particular moment in time. ActivatedRouteSnapshot can also be used to traverse the router
- * state tree.
+ * @description
  *
- * @howToUse
+ * Contains the information about a route associated with a component loaded in an
+ * outlet at a particular moment in time. ActivatedRouteSnapshot can also be used to
+ * traverse the router state tree.
  *
  * ```
  * @Component({templateUrl:'./my-component.html'})
@@ -230,7 +244,7 @@ export function inheritedParamsDataResolve(route: ActivatedRouteSnapshot): Inher
  * }
  * ```
  *
- * @stable
+ * @publicApi
  */
 export class ActivatedRouteSnapshot {
   /** The configuration used to match this route **/
@@ -242,13 +256,17 @@ export class ActivatedRouteSnapshot {
   /** @internal */
   _resolve: ResolveData;
   /** @internal */
-  _resolvedData: Data;
+  // TODO(issue/24571): remove '!'.
+  _resolvedData !: Data;
   /** @internal */
-  _routerState: RouterStateSnapshot;
+  // TODO(issue/24571): remove '!'.
+  _routerState !: RouterStateSnapshot;
   /** @internal */
-  _paramMap: ParamMap;
+  // TODO(issue/24571): remove '!'.
+  _paramMap !: ParamMap;
   /** @internal */
-  _queryParamMap: ParamMap;
+  // TODO(issue/24571): remove '!'.
+  _queryParamMap !: ParamMap;
 
   /** @internal */
   constructor(
@@ -310,9 +328,15 @@ export class ActivatedRouteSnapshot {
 }
 
 /**
- * @whatItDoes Represents the state of the router at a moment in time.
+ * @description
  *
- * @howToUse
+ * Represents the state of the router at a moment in time.
+ *
+ * This is a tree of activated route snapshots. Every node in this tree knows about
+ * the "consumed" URL segments, the extracted parameters, and the resolved data.
+ *
+ * @usageNotes
+ * ### Example
  *
  * ```
  * @Component({templateUrl:'template.html'})
@@ -328,11 +352,7 @@ export class ActivatedRouteSnapshot {
  * }
  * ```
  *
- * @description
- * RouterStateSnapshot is a tree of activated route snapshots. Every node in this tree knows about
- * the "consumed" URL segments, the extracted parameters, and the resolved data.
- *
- * @stable
+ * @publicApi
  */
 export class RouterStateSnapshot extends Tree<ActivatedRouteSnapshot> {
   /** @internal */
@@ -352,7 +372,7 @@ function setRouterState<U, T extends{_routerState: U}>(state: U, node: TreeNode<
 }
 
 function serializeNode(node: TreeNode<ActivatedRouteSnapshot>): string {
-  const c = node.children.length > 0 ? ` { ${node.children.map(serializeNode).join(", ")} } ` : '';
+  const c = node.children.length > 0 ? ` { ${node.children.map(serializeNode).join(', ')} } ` : '';
   return `${node.value}${c}`;
 }
 

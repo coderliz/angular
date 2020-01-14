@@ -9,6 +9,7 @@
 import {Adapter, Context} from './adapter';
 import {CacheState, UpdateCacheStatus, UpdateSource, UrlMetadata} from './api';
 import {Database, Table} from './database';
+import {SwCriticalError, errorToString} from './error';
 import {IdleScheduler} from './idle';
 import {AssetGroupConfig} from './manifest';
 import {sha1Binary} from './sha1';
@@ -68,8 +69,7 @@ export abstract class AssetGroup {
 
     // Determine the origin from the registration scope. This is used to differentiate between
     // relative and absolute URLs.
-    this.origin =
-        this.adapter.parseUrl(this.scope.registration.scope, this.scope.registration.scope).origin;
+    this.origin = this.adapter.parseUrl(this.scope.registration.scope).origin;
   }
 
   async cacheStatus(url: string): Promise<UpdateCacheStatus> {
@@ -192,9 +192,10 @@ export abstract class AssetGroup {
       cacheDirectives.forEach(v => v[0] = v[0].toLowerCase());
 
       // Find the max-age directive, if one exists.
-      const cacheAge = cacheDirectives.filter(v => v[0] === 'max-age').map(v => v[1])[0];
+      const maxAgeDirective = cacheDirectives.find(v => v[0] === 'max-age');
+      const cacheAge = maxAgeDirective ? maxAgeDirective[1] : undefined;
 
-      if (cacheAge.length === 0) {
+      if (!cacheAge) {
         // No usable TTL defined. Must assume that the response is stale.
         return true;
       }
@@ -210,7 +211,7 @@ export abstract class AssetGroup {
           // Check the metadata table. If a timestamp is there, use it.
           const metaTable = await this.metadata;
           ts = (await metaTable.read<UrlMetadata>(req.url)).ts;
-        } catch (e) {
+        } catch {
           // Otherwise, look for a Date header.
           const date = res.headers.get('Date');
           if (date === null) {
@@ -222,7 +223,7 @@ export abstract class AssetGroup {
         }
         const age = this.adapter.time - ts;
         return age < 0 || age > maxAge;
-      } catch (e) {
+      } catch {
         // Assume stale.
         return true;
       }
@@ -233,7 +234,7 @@ export abstract class AssetGroup {
         // The request needs to be revalidated if the current time is later than the expiration
         // time, if it parses correctly.
         return this.adapter.time > Date.parse(expiresStr);
-      } catch (e) {
+      } catch {
         // The expiration date failed to parse, so revalidate as a precaution.
         return true;
       }
@@ -261,7 +262,7 @@ export abstract class AssetGroup {
     let metadata: UrlMetadata|undefined = undefined;
     try {
       metadata = await metaTable.read<UrlMetadata>(url);
-    } catch (e) {
+    } catch {
       // Do nothing, not found. This shouldn't happen, but it can be handled.
     }
 
@@ -276,6 +277,7 @@ export abstract class AssetGroup {
     const cache = await this.cache;
     // Start with the set of all cached URLs.
     return (await cache.keys())
+        .map(request => request.url)
         // Exclude the URLs which have hashes.
         .filter(url => !this.hashes.has(url));
   }
@@ -314,24 +316,33 @@ export abstract class AssetGroup {
             `Response not Ok (fetchAndCacheOnce): request for ${req.url} returned response ${res.status} ${res.statusText}`);
       }
 
-      // This response is safe to cache (as long as it's cloned). Wait until the cache operation
-      // is complete.
-      const cache = await this.scope.caches.open(`${this.prefix}:${this.config.name}:cache`);
-      await cache.put(req, res.clone());
+      try {
+        // This response is safe to cache (as long as it's cloned). Wait until the cache operation
+        // is complete.
+        const cache = await this.scope.caches.open(`${this.prefix}:${this.config.name}:cache`);
+        await cache.put(req, res.clone());
 
-      // If the request is not hashed, update its metadata, especially the timestamp. This is needed
-      // for future determination of whether this cached response is stale or not.
-      if (!this.hashes.has(req.url)) {
-        // Metadata is tracked for requests that are unhashed.
-        const meta: UrlMetadata = {ts: this.adapter.time, used};
-        const metaTable = await this.metadata;
-        await metaTable.write(req.url, meta);
+        // If the request is not hashed, update its metadata, especially the timestamp. This is
+        // needed for future determination of whether this cached response is stale or not.
+        if (!this.hashes.has(req.url)) {
+          // Metadata is tracked for requests that are unhashed.
+          const meta: UrlMetadata = {ts: this.adapter.time, used};
+          const metaTable = await this.metadata;
+          await metaTable.write(req.url, meta);
+        }
+
+        return res;
+      } catch (err) {
+        // Among other cases, this can happen when the user clears all data through the DevTools,
+        // but the SW is still running and serving another tab. In that case, trying to write to the
+        // caches throws an `Entry was not found` error.
+        // If this happens the SW can no longer work correctly. This situation is unrecoverable.
+        throw new SwCriticalError(
+            `Failed to update the caches for request to '${req.url}' (fetchAndCacheOnce): ${errorToString(err)}`);
       }
-
-      return res;
     } finally {
       // Finally, it can be removed from `inFlightRequests`. This might result in a double-remove
-      // if some other  chain was already making this request too, but that won't hurt anything.
+      // if some other chain was already making this request too, but that won't hurt anything.
       this.inFlightRequests.delete(req.url);
     }
   }
@@ -344,7 +355,7 @@ export abstract class AssetGroup {
     if ((res as any)['redirected'] && !!res.url) {
       // If the redirect limit is exhausted, fail with an error.
       if (redirectLimit === 0) {
-        throw new Error(
+        throw new SwCriticalError(
             `Response hit redirect limit (fetchFromNetwork): request redirected too many times, next is ${res.url}`);
       }
 
@@ -408,7 +419,7 @@ export abstract class AssetGroup {
 
         // If the response was unsuccessful, there's nothing more that can be done.
         if (!cacheBustedResult.ok) {
-          throw new Error(
+          throw new SwCriticalError(
               `Response not Ok (cacheBustedFetchFromNetwork): cache busted request for ${req.url} returned response ${cacheBustedResult.status} ${cacheBustedResult.statusText}`);
         }
 
@@ -418,7 +429,7 @@ export abstract class AssetGroup {
         // If the cache-busted version doesn't match, then the manifest is not an accurate
         // representation of the server's current set of files, and the SW should give up.
         if (canonicalHash !== cacheBustedHash) {
-          throw new Error(
+          throw new SwCriticalError(
               `Hash mismatch (cacheBustedFetchFromNetwork): ${req.url}: expected ${canonicalHash}, got ${cacheBustedHash} (after cache busting)`);
         }
 
@@ -475,7 +486,7 @@ export abstract class AssetGroup {
   protected async safeFetch(req: Request): Promise<Response> {
     try {
       return await this.scope.fetch(req);
-    } catch (err) {
+    } catch {
       return this.adapter.newResponse('', {
         status: 504,
         statusText: 'Gateway Timeout',

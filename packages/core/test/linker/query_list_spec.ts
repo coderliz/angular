@@ -6,13 +6,13 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {iterateListLike} from '@angular/core/src/change_detection/change_detection_util';
 import {QueryList} from '@angular/core/src/linker/query_list';
 import {fakeAsync, tick} from '@angular/core/testing';
 import {beforeEach, describe, expect, it} from '@angular/core/testing/src/testing_internal';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
 
-export function main() {
+{
   describe('QueryList', () => {
     let queryList: QueryList<string>;
     let log: string;
@@ -22,6 +22,22 @@ export function main() {
     });
 
     function logAppend(item: any /** TODO #9100 */) { log += (log.length == 0 ? '' : ', ') + item; }
+
+    describe('dirty and reset', () => {
+
+      it('should initially be dirty and empty', () => {
+        expect(queryList.dirty).toBeTruthy();
+        expect(queryList.length).toBe(0);
+      });
+
+      it('should be not dirty after reset', () => {
+        expect(queryList.dirty).toBeTruthy();
+        queryList.reset(['one', 'two']);
+        expect(queryList.dirty).toBeFalsy();
+        expect(queryList.length).toBe(2);
+      });
+
+    });
 
     it('should support resetting and iterating over the new objects', () => {
       queryList.reset(['one']);
@@ -117,6 +133,22 @@ export function main() {
       queryList.reset(['one', 'two', 'three']);
       expect(queryList.some(item => item === 'one')).toEqual(true);
       expect(queryList.some(item => item === 'four')).toEqual(false);
+    });
+
+    it('should be iterable', () => {
+      const data = ['one', 'two', 'three'];
+      queryList.reset([...data]);
+
+      // The type here is load-bearing: it asserts that queryList is considered assignable to
+      // Iterable<string> in TypeScript. This is important for template type-checking of *ngFor
+      // when looping over query results.
+      const queryListAsIterable: Iterable<string> = queryList;
+
+      // For loops use the iteration protocol.
+      for (const value of queryListAsIterable) {
+        expect(value).toBe(data.shift() !);
+      }
+      expect(data.length).toBe(0);
     });
 
     if (getDOM().supportsDOMEvents()) {

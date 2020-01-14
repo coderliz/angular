@@ -9,15 +9,12 @@
 import {fakeAsync, tick} from '@angular/core/testing';
 import {describe, expect, it} from '@angular/core/testing/src/testing_internal';
 import {AbstractControl, AsyncValidatorFn, FormArray, FormControl, Validators} from '@angular/forms';
-import {Observable} from 'rxjs/Observable';
-import {of } from 'rxjs/observable/of';
-import {timer} from 'rxjs/observable/timer';
-import {first} from 'rxjs/operator/first';
-import {map} from 'rxjs/operator/map';
-import {normalizeAsyncValidator} from '../src/directives/normalize_validator';
-import {AsyncValidator, ValidationErrors, ValidatorFn} from '../src/directives/validators';
+import {normalizeAsyncValidator} from '@angular/forms/src/directives/normalize_validator';
+import {AsyncValidator, ValidationErrors, ValidatorFn} from '@angular/forms/src/directives/validators';
+import {Observable, of , timer} from 'rxjs';
+import {first, map} from 'rxjs/operators';
 
-export function main() {
+(function() {
   function validator(key: string, error: any): ValidatorFn {
     return (c: AbstractControl) => {
       const r: ValidationErrors = {};
@@ -159,6 +156,12 @@ export function main() {
     });
 
     describe('email', () => {
+      it('should not error on an empty string',
+         () => expect(Validators.email(new FormControl(''))).toBeNull());
+
+      it('should not error on null',
+         () => expect(Validators.email(new FormControl(null))).toBeNull());
+
       it('should error on invalid email',
          () => expect(Validators.email(new FormControl('some text'))).toEqual({'email': true}));
 
@@ -270,6 +273,18 @@ export function main() {
 
       it('should not error on "undefined" pattern',
          () => expect(Validators.pattern(undefined !)(new FormControl('aaAA'))).toBeNull());
+
+      it('should work with pattern string containing both boundary symbols',
+         () => expect(Validators.pattern('^[aA]*$')(new FormControl('aaAA'))).toBeNull());
+
+      it('should work with pattern string containing only start boundary symbols',
+         () => expect(Validators.pattern('^[aA]*')(new FormControl('aaAA'))).toBeNull());
+
+      it('should work with pattern string containing only end boundary symbols',
+         () => expect(Validators.pattern('[aA]*$')(new FormControl('aaAA'))).toBeNull());
+
+      it('should work with pattern string not containing any boundary symbols',
+         () => expect(Validators.pattern('[aA]*')(new FormControl('aaAA'))).toBeNull());
     });
 
     describe('compose', () => {
@@ -314,32 +329,35 @@ export function main() {
              const v = Validators.composeAsync(
                  [promiseValidator({'one': true}), promiseValidator({'two': true})]) !;
 
-             let errorMap: {[key: string]: any} = undefined !;
-             first.call(v(new FormControl('invalid')))
-                 .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+             let errorMap: {[key: string]: any}|null = undefined !;
+             (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+                 .pipe(first())
+                 .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
              tick();
 
-             expect(errorMap).toEqual({'one': true, 'two': true});
+             expect(errorMap !).toEqual({'one': true, 'two': true});
            }));
 
         it('should normalize and evaluate async validator-directives correctly', fakeAsync(() => {
              const v = Validators.composeAsync([normalizeAsyncValidator(
                  new AsyncValidatorDirective('expected', {'one': true}))]) !;
 
-             let errorMap: {[key: string]: any} = undefined !;
-             first.call(v(new FormControl('invalid')))
-                 .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+             let errorMap: {[key: string]: any}|null = undefined !;
+             (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+                 .pipe(first())
+                 .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
              tick();
 
-             expect(errorMap).toEqual({'one': true});
+             expect(errorMap !).toEqual({'one': true});
            }));
 
         it('should return null when no errors', fakeAsync(() => {
              const v = Validators.composeAsync([promiseValidator({'one': true})]) !;
 
-             let errorMap: {[key: string]: any} = undefined !;
-             first.call(v(new FormControl('expected')))
-                 .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+             let errorMap: {[key: string]: any}|null = undefined !;
+             (v(new FormControl('expected')) as Observable<ValidationErrors|null>)
+                 .pipe(first())
+                 .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
              tick();
 
              expect(errorMap).toBeNull();
@@ -348,12 +366,13 @@ export function main() {
         it('should ignore nulls', fakeAsync(() => {
              const v = Validators.composeAsync([promiseValidator({'one': true}), null !]) !;
 
-             let errorMap: {[key: string]: any} = undefined !;
-             first.call(v(new FormControl('invalid')))
-                 .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+             let errorMap: {[key: string]: any}|null = undefined !;
+             (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+                 .pipe(first())
+                 .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
              tick();
 
-             expect(errorMap).toEqual({'one': true});
+             expect(errorMap !).toEqual({'one': true});
            }));
       });
 
@@ -372,30 +391,33 @@ export function main() {
           const v = Validators.composeAsync(
               [observableValidator({'one': true}), observableValidator({'two': true})]) !;
 
-          let errorMap: {[key: string]: any} = undefined !;
-          first.call(v(new FormControl('invalid')))
-              .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+          let errorMap: {[key: string]: any}|null = undefined !;
+          (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+              .pipe(first())
+              .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
 
-          expect(errorMap).toEqual({'one': true, 'two': true});
+          expect(errorMap !).toEqual({'one': true, 'two': true});
         });
 
         it('should normalize and evaluate async validator-directives correctly', () => {
           const v = Validators.composeAsync(
               [normalizeAsyncValidator(new AsyncValidatorDirective('expected', {'one': true}))]) !;
 
-          let errorMap: {[key: string]: any} = undefined !;
-          first.call(v(new FormControl('invalid')))
-              .subscribe((errors: {[key: string]: any}) => errorMap = errors) !;
+          let errorMap: {[key: string]: any}|null = undefined !;
+          (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+              .pipe(first())
+              .subscribe((errors: {[key: string]: any} | null) => errorMap = errors) !;
 
-          expect(errorMap).toEqual({'one': true});
+          expect(errorMap !).toEqual({'one': true});
         });
 
         it('should return null when no errors', () => {
           const v = Validators.composeAsync([observableValidator({'one': true})]) !;
 
-          let errorMap: {[key: string]: any} = undefined !;
-          first.call(v(new FormControl('expected')))
-              .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+          let errorMap: {[key: string]: any}|null = undefined !;
+          (v(new FormControl('expected')) as Observable<ValidationErrors|null>)
+              .pipe(first())
+              .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
 
           expect(errorMap).toBeNull();
         });
@@ -403,36 +425,39 @@ export function main() {
         it('should ignore nulls', () => {
           const v = Validators.composeAsync([observableValidator({'one': true}), null !]) !;
 
-          let errorMap: {[key: string]: any} = undefined !;
-          first.call(v(new FormControl('invalid')))
-              .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+          let errorMap: {[key: string]: any}|null = undefined !;
+          (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+              .pipe(first())
+              .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
 
-          expect(errorMap).toEqual({'one': true});
+          expect(errorMap !).toEqual({'one': true});
         });
 
         it('should wait for all validators before setting errors', fakeAsync(() => {
              function getTimerObs(time: number, errorMap: {[key: string]: any}): AsyncValidatorFn {
-               return (c: AbstractControl) => { return map.call(timer(time), () => errorMap); };
+               return (c: AbstractControl) => { return timer(time).pipe(map(() => errorMap)); };
              }
 
              const v = Validators.composeAsync(
                  [getTimerObs(100, {one: true}), getTimerObs(200, {two: true})]) !;
 
-             let errorMap: {[key: string]: any} = undefined !;
-             first.call(v(new FormControl('invalid')))
-                 .subscribe((errors: {[key: string]: any}) => errorMap = errors);
+             let errorMap: {[key: string]: any}|null = undefined !;
+             (v(new FormControl('invalid')) as Observable<ValidationErrors|null>)
+                 .pipe(first())
+                 .subscribe((errors: {[key: string]: any} | null) => errorMap = errors);
 
              tick(100);
              expect(errorMap).not.toBeDefined(
                  `Expected errors not to be set until all validators came back.`);
 
              tick(100);
-             expect(errorMap).toEqual(
-                 {one: true, two: true}, `Expected errors to merge once all validators resolved.`);
+             expect(errorMap !)
+                 .toEqual(
+                     {one: true, two: true},
+                     `Expected errors to merge once all validators resolved.`);
            }));
-
       });
 
     });
   });
-}
+})();

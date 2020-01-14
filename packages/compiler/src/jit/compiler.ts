@@ -9,12 +9,13 @@
 import {CompileDirectiveMetadata, CompileIdentifierMetadata, CompileNgModuleMetadata, CompilePipeSummary, CompileProviderMetadata, CompileStylesheetMetadata, CompileTypeSummary, ProviderMeta, ProxyClass, identifierName, ngModuleJitUrl, sharedStylesheetJitUrl, templateJitUrl, templateSourceUrl} from '../compile_metadata';
 import {CompileReflector} from '../compile_reflector';
 import {CompilerConfig} from '../config';
+import {ConstantPool} from '../constant_pool';
 import {Type} from '../core';
 import {CompileMetadataResolver} from '../metadata_resolver';
 import {NgModuleCompiler} from '../ng_module_compiler';
 import * as ir from '../output/output_ast';
 import {interpretStatements} from '../output/output_interpreter';
-import {jitStatements} from '../output/output_jit';
+import {JitEvaluator} from '../output/output_jit';
 import {CompiledStylesheet, StyleCompiler} from '../style_compiler';
 import {SummaryResolver} from '../summary_resolver';
 import {TemplateAst} from '../template_parser/template_ast';
@@ -48,8 +49,8 @@ export class JitCompiler {
       private _metadataResolver: CompileMetadataResolver, private _templateParser: TemplateParser,
       private _styleCompiler: StyleCompiler, private _viewCompiler: ViewCompiler,
       private _ngModuleCompiler: NgModuleCompiler, private _summaryResolver: SummaryResolver<Type>,
-      private _reflector: CompileReflector, private _compilerConfig: CompilerConfig,
-      private _console: Console,
+      private _reflector: CompileReflector, private _jitEvaluator: JitEvaluator,
+      private _compilerConfig: CompilerConfig, private _console: Console,
       private getExtraNgModuleProviders: (ngModule: any) => CompileProviderMetadata[]) {}
 
   compileModuleSync(moduleType: Type): object {
@@ -195,7 +196,7 @@ export class JitCompiler {
         }
       });
       localModuleMeta.entryComponents.forEach((entryComponentType) => {
-        if (!this.hasAotSummary(entryComponentType.componentType.reference)) {
+        if (!this.hasAotSummary(entryComponentType.componentType)) {
           const moduleMeta = moduleByJitDirective.get(entryComponentType.componentType) !;
           templates.add(
               this._createCompiledHostTemplate(entryComponentType.componentType, moduleMeta));
@@ -321,7 +322,8 @@ export class JitCompiler {
     if (!this._compilerConfig.useJit) {
       return interpretStatements(statements, this._reflector);
     } else {
-      return jitStatements(sourceUrl, statements, this._reflector, this._compilerConfig.jitDevMode);
+      return this._jitEvaluator.evaluateStatements(
+          sourceUrl, statements, this._reflector, this._compilerConfig.jitDevMode);
     }
   }
 }
@@ -355,5 +357,5 @@ function assertComponent(meta: CompileDirectiveMetadata) {
 function createOutputContext(): OutputContext {
   const importExpr = (symbol: any) =>
       ir.importExpr({name: identifierName(symbol), moduleName: null, runtime: symbol});
-  return {statements: [], genFilePath: '', importExpr};
+  return {statements: [], genFilePath: '', importExpr, constantPool: new ConstantPool()};
 }

@@ -5,20 +5,19 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {animate, group, query, state, style, transition, trigger} from '@angular/animations';
+import {animate, query, state, style, transition, trigger} from '@angular/animations';
 import {AnimationDriver, ɵAnimationEngine, ɵWebAnimationsDriver, ɵWebAnimationsPlayer, ɵsupportsWebAnimations} from '@angular/animations/browser';
 import {TransitionAnimationPlayer} from '@angular/animations/browser/src/render/transition_animation_engine';
 import {AnimationGroupPlayer} from '@angular/animations/src/players/animation_group_player';
-import {Component} from '@angular/core';
+import {Component, ViewChild} from '@angular/core';
+import {TestBed} from '@angular/core/testing';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {browserDetection} from '@angular/platform-browser/testing/src/browser_util';
 
-import {TestBed} from '../../testing';
-
-export function main() {
+(function() {
   // these tests are only mean't to be run within the DOM (for now)
   // Buggy in Chromium 39, see https://github.com/angular/angular/issues/15793
-  if (typeof Element == 'undefined' || !ɵsupportsWebAnimations()) return;
+  if (isNode || !ɵsupportsWebAnimations()) return;
 
   describe('animation integration tests using web animations', function() {
 
@@ -54,20 +53,22 @@ export function main() {
 
       TestBed.configureTestingModule({declarations: [Cmp]});
 
-      const engine = TestBed.get(ɵAnimationEngine);
+      const engine = TestBed.inject(ɵAnimationEngine);
       const fixture = TestBed.createComponent(Cmp);
       const cmp = fixture.componentInstance;
 
       cmp.exp = true;
       fixture.detectChanges();
-      engine.flush();
 
       expect(engine.players.length).toEqual(1);
-      let webPlayer = engine.players[0].getRealPlayer() as ɵWebAnimationsPlayer;
+      let webPlayer =
+          (engine.players[0] as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
 
       expect(webPlayer.keyframes).toEqual([
         {height: '0px', offset: 0}, {height: '100px', offset: 1}
       ]);
+
+      webPlayer.finish();
 
       if (!browserDetection.isOldChrome) {
         cmp.exp = false;
@@ -75,7 +76,8 @@ export function main() {
         engine.flush();
 
         expect(engine.players.length).toEqual(1);
-        webPlayer = engine.players[0].getRealPlayer() as ɵWebAnimationsPlayer;
+        webPlayer = (engine.players[0] as TransitionAnimationPlayer)
+                        .getRealPlayer() as ɵWebAnimationsPlayer;
 
         expect(webPlayer.keyframes).toEqual([
           {height: '100px', offset: 0}, {height: '0px', offset: 1}
@@ -106,7 +108,7 @@ export function main() {
 
       TestBed.configureTestingModule({declarations: [Cmp]});
 
-      const engine = TestBed.get(ɵAnimationEngine);
+      const engine = TestBed.inject(ɵAnimationEngine);
       const fixture = TestBed.createComponent(Cmp);
       const cmp = fixture.componentInstance;
 
@@ -115,7 +117,8 @@ export function main() {
       engine.flush();
 
       expect(engine.players.length).toEqual(1);
-      let webPlayer = engine.players[0].getRealPlayer() as ɵWebAnimationsPlayer;
+      let webPlayer =
+          (engine.players[0] as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
 
       expect(webPlayer.keyframes).toEqual([
         {height: '100px', offset: 0}, {height: '120px', offset: 1}
@@ -137,13 +140,14 @@ export function main() {
             [transition('* => *', [style({height: '!'}), animate(1000, style({height: '*'}))])])]
       })
       class Cmp {
-        public exp: number;
+        // TODO(issue/24571): remove '!'.
+        public exp !: number;
         public items = [0, 1, 2, 3, 4];
       }
 
       TestBed.configureTestingModule({declarations: [Cmp]});
 
-      const engine = TestBed.get(ɵAnimationEngine);
+      const engine = TestBed.inject(ɵAnimationEngine);
       const fixture = TestBed.createComponent(Cmp);
       const cmp = fixture.componentInstance;
 
@@ -153,7 +157,7 @@ export function main() {
 
       expect(engine.players.length).toEqual(1);
       let player = engine.players[0];
-      let webPlayer = player.getRealPlayer() as ɵWebAnimationsPlayer;
+      let webPlayer = (player as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
 
       expect(webPlayer.keyframes).toEqual([
         {height: '0px', offset: 0}, {height: '100px', offset: 1}
@@ -171,7 +175,7 @@ export function main() {
 
       expect(engine.players.length).toEqual(1);
       player = engine.players[0];
-      webPlayer = player.getRealPlayer() as ɵWebAnimationsPlayer;
+      webPlayer = (player as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
 
       expect(webPlayer.keyframes).toEqual([
         {height: '100px', offset: 0}, {height: '80px', offset: 1}
@@ -214,7 +218,7 @@ export function main() {
 
       TestBed.configureTestingModule({declarations: [Cmp]});
 
-      const engine = TestBed.get(ɵAnimationEngine);
+      const engine = TestBed.inject(ɵAnimationEngine);
       const fixture = TestBed.createComponent(Cmp);
       const cmp = fixture.componentInstance;
 
@@ -222,7 +226,7 @@ export function main() {
       fixture.detectChanges();
 
       let player = engine.players[0] !;
-      let webPlayer = player.getRealPlayer() as ɵWebAnimationsPlayer;
+      let webPlayer = (player as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
       expect(webPlayer.keyframes).toEqual([
         {height: '0px', offset: 0},
         {height: '300px', offset: 1},
@@ -233,7 +237,7 @@ export function main() {
       fixture.detectChanges();
 
       player = engine.players[0] !;
-      webPlayer = player.getRealPlayer() as ɵWebAnimationsPlayer;
+      webPlayer = (player as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
       expect(webPlayer.keyframes).toEqual([
         {height: '300px', offset: 0},
         {height: '0px', offset: 1},
@@ -243,8 +247,8 @@ export function main() {
     it('should treat * styles as ! for queried items that are collected in a container that is being removed',
        () => {
          @Component({
-            selector: 'my-app',
-            styles: [`
+          selector: 'my-app',
+          styles: [`
               .list .outer {
                 overflow:hidden;
               }
@@ -252,7 +256,7 @@ export function main() {
                 line-height:50px;
               }
             `],
-            template: `
+          template: `
               <button (click)="empty()">Empty</button>
               <button (click)="middle()">Middle</button>
               <button (click)="full()">Full</button>
@@ -265,22 +269,22 @@ export function main() {
                 </div>
               </div>
             `,
-            animations: [
-              trigger('list', [
-                transition(':enter', []),
-                transition('* => empty', [
-                  query(':leave', [
-                    animate(500, style({ height: '0px' }))
-                  ])
-                ]),
-                transition('* => full', [
-                  query(':enter', [
-                    style({ height: '0px' }),
-                    animate(500, style({ height: '*' }))
-                  ])
-                ]),
-              ])
-            ]
+          animations: [
+            trigger('list', [
+              transition(':enter', []),
+              transition('* => empty', [
+                query(':leave', [
+                  animate(500, style({height: '0px'}))
+                ])
+              ]),
+              transition('* => full', [
+                query(':enter', [
+                  style({height: '0px'}),
+                  animate(500, style({height: '*'}))
+                ])
+              ]),
+            ])
+          ]
         })
         class Cmp {
            items: any[] = [];
@@ -294,7 +298,7 @@ export function main() {
 
          TestBed.configureTestingModule({declarations: [Cmp]});
 
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(Cmp);
          const cmp = fixture.componentInstance;
 
@@ -307,7 +311,9 @@ export function main() {
          fixture.detectChanges();
 
          player = engine.players[0] !as TransitionAnimationPlayer;
-         let queriedPlayers = (player.getRealPlayer() as AnimationGroupPlayer).players;
+         let queriedPlayers =
+             ((player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer)
+                 .players;
          expect(queriedPlayers.length).toEqual(5);
 
          let i = 0;
@@ -324,7 +330,9 @@ export function main() {
          fixture.detectChanges();
 
          player = engine.players[0] !as TransitionAnimationPlayer;
-         queriedPlayers = (player.getRealPlayer() as AnimationGroupPlayer).players;
+         queriedPlayers =
+             ((player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer)
+                 .players;
          expect(queriedPlayers.length).toEqual(5);
 
          for (i = 0; i < queriedPlayers.length; i++) {
@@ -357,12 +365,13 @@ export function main() {
         ]
       })
       class Cmp {
-        public exp: string;
+        // TODO(issue/24571): remove '!'.
+        public exp !: string;
       }
 
       TestBed.configureTestingModule({declarations: [Cmp]});
 
-      const engine = TestBed.get(ɵAnimationEngine);
+      const engine = TestBed.inject(ɵAnimationEngine);
       const fixture = TestBed.createComponent(Cmp);
       const cmp = fixture.componentInstance;
 
@@ -370,17 +379,17 @@ export function main() {
       fixture.detectChanges();
 
       let player = engine.players[0] !;
-      let webPlayer = player.getRealPlayer() as ɵWebAnimationsPlayer;
+      let webPlayer = (player as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
       webPlayer.setPosition(0.5);
 
       cmp.exp = 'b';
       fixture.detectChanges();
 
       player = engine.players[0] !;
-      webPlayer = player.getRealPlayer() as ɵWebAnimationsPlayer;
-      expect(approximate(parseFloat(webPlayer.previousStyles['width'] as string), 150))
+      webPlayer = (player as TransitionAnimationPlayer).getRealPlayer() as ɵWebAnimationsPlayer;
+      expect(approximate(parseFloat(webPlayer.keyframes[0]['width'] as string), 150))
           .toBeLessThan(0.05);
-      expect(approximate(parseFloat(webPlayer.previousStyles['height'] as string), 300))
+      expect(approximate(parseFloat(webPlayer.keyframes[0]['height'] as string), 300))
           .toBeLessThan(0.05);
     });
 
@@ -410,13 +419,14 @@ export function main() {
            ]
          })
          class Cmp {
-           public exp: string;
+           // TODO(issue/24571): remove '!'.
+           public exp !: string;
            public items: any[] = [];
          }
 
          TestBed.configureTestingModule({declarations: [Cmp]});
 
-         const engine = TestBed.get(ɵAnimationEngine);
+         const engine = TestBed.inject(ɵAnimationEngine);
          const fixture = TestBed.createComponent(Cmp);
          const cmp = fixture.componentInstance;
 
@@ -425,7 +435,8 @@ export function main() {
          fixture.detectChanges();
 
          let player = engine.players[0] !;
-         let groupPlayer = player.getRealPlayer() as AnimationGroupPlayer;
+         let groupPlayer =
+             (player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer;
          let players = groupPlayer.players;
          expect(players.length).toEqual(5);
 
@@ -439,20 +450,73 @@ export function main() {
          fixture.detectChanges();
 
          player = engine.players[0];
-         groupPlayer = player.getRealPlayer() as AnimationGroupPlayer;
+         groupPlayer =
+             (player as TransitionAnimationPlayer).getRealPlayer() as AnimationGroupPlayer;
          players = groupPlayer.players;
 
          expect(players.length).toEqual(5);
          for (let i = 0; i < players.length; i++) {
            const p = players[i] as ɵWebAnimationsPlayer;
-           expect(approximate(parseFloat(p.previousStyles['width'] as string), 250))
+           expect(approximate(parseFloat(p.keyframes[0]['width'] as string), 250))
                .toBeLessThan(0.05);
-           expect(approximate(parseFloat(p.previousStyles['height'] as string), 500))
+           expect(approximate(parseFloat(p.keyframes[0]['height'] as string), 500))
                .toBeLessThan(0.05);
          }
        });
+
+    it('should apply the `display` and `position` styles as regular inline styles for the duration of the animation',
+       () => {
+         @Component({
+           selector: 'ani-cmp',
+           template: `
+          <div #elm [@myAnimation]="myAnimationExp" style="display:table; position:fixed"></div>
+        `,
+           animations: [
+             trigger(
+                 'myAnimation',
+                 [
+                   state('go', style({display: 'inline-block'})),
+                   transition(
+                       '* => go',
+                       [
+                         style({display: 'inline', position: 'absolute', opacity: 0}),
+                         animate('1s', style({display: 'inline', opacity: 1, position: 'static'})),
+                         animate('1s', style({display: 'flexbox', opacity: 0})),
+                       ])
+                 ]),
+           ]
+         })
+         class Cmp {
+           @ViewChild('elm', {static: true}) public element: any;
+
+           public myAnimationExp = '';
+         }
+
+         TestBed.configureTestingModule({declarations: [Cmp]});
+
+         const engine = TestBed.inject(ɵAnimationEngine);
+         const fixture = TestBed.createComponent(Cmp);
+         const cmp = fixture.componentInstance;
+
+         const elm = cmp.element.nativeElement;
+         expect(elm.style.getPropertyValue('display')).toEqual('table');
+         expect(elm.style.getPropertyValue('position')).toEqual('fixed');
+
+         cmp.myAnimationExp = 'go';
+         fixture.detectChanges();
+
+         expect(elm.style.getPropertyValue('display')).toEqual('inline');
+         expect(elm.style.getPropertyValue('position')).toEqual('absolute');
+
+         const player = engine.players.pop() !;
+         player.finish();
+         player.destroy();
+
+         expect(elm.style.getPropertyValue('display')).toEqual('inline-block');
+         expect(elm.style.getPropertyValue('position')).toEqual('fixed');
+       });
   });
-}
+})();
 
 function approximate(value: number, target: number) {
   return Math.abs(target - value) / value;

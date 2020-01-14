@@ -11,10 +11,16 @@ import {CacheState, UpdateCacheStatus, UpdateSource} from './api';
 import {AssetGroup, LazyAssetGroup, PrefetchAssetGroup} from './assets';
 import {DataGroup} from './data';
 import {Database} from './database';
+import {DebugHandler} from './debug';
 import {IdleScheduler} from './idle';
 import {Manifest} from './manifest';
-import {isNavigationRequest} from './util';
 
+
+const BACKWARDS_COMPATIBILITY_NAVIGATION_URLS = [
+  {positive: true, regex: '^/.*$'},
+  {positive: false, regex: '^/.*\\.[^/]*$'},
+  {positive: false, regex: '^/.*__'},
+];
 
 /**
  * A specific version of the application, identified by a unique manifest
@@ -41,6 +47,12 @@ export class AppVersion implements UpdateSource {
   private dataGroups: DataGroup[];
 
   /**
+   * Requests to URLs that match any of the `include` RegExps and none of the `exclude` RegExps
+   * are considered navigation requests and handled accordingly.
+   */
+  private navigationUrls: {include: RegExp[], exclude: RegExp[]};
+
+  /**
    * Tracks whether the manifest has encountered any inconsistencies.
    */
   private _okay = true;
@@ -49,7 +61,8 @@ export class AppVersion implements UpdateSource {
 
   constructor(
       private scope: ServiceWorkerGlobalScope, private adapter: Adapter, private database: Database,
-      private idle: IdleScheduler, readonly manifest: Manifest, readonly manifestHash: string) {
+      private idle: IdleScheduler, private debugHandler: DebugHandler, readonly manifest: Manifest,
+      readonly manifestHash: string) {
     // The hashTable within the manifest is an Object - convert it to a Map for easier lookups.
     Object.keys(this.manifest.hashTable).forEach(url => {
       this.hashTable.set(url, this.manifest.hashTable[url]);
@@ -61,7 +74,7 @@ export class AppVersion implements UpdateSource {
     this.assetGroups = (manifest.assetGroups || []).map(config => {
       // Every asset group has a cache that's prefixed by the manifest hash and the name of the
       // group.
-      const prefix = `ngsw:${this.manifestHash}:assets`;
+      const prefix = `${adapter.cacheNamePrefix}:${this.manifestHash}:assets`;
       // Check the caching mode, which determines when resources will be fetched/updated.
       switch (config.installMode) {
         case 'prefetch':
@@ -74,11 +87,24 @@ export class AppVersion implements UpdateSource {
     });
 
     // Process each `DataGroup` declared in the manifest.
-    this.dataGroups = (manifest.dataGroups || [])
-                          .map(
-                              config => new DataGroup(
-                                  this.scope, this.adapter, config, this.database,
-                                  `ngsw:${config.version}:data`));
+    this.dataGroups =
+        (manifest.dataGroups || [])
+            .map(
+                config => new DataGroup(
+                    this.scope, this.adapter, config, this.database, this.debugHandler,
+                    `${adapter.cacheNamePrefix}:${config.version}:data`));
+
+    // This keeps backwards compatibility with app versions without navigation urls.
+    // Fix: https://github.com/angular/angular/issues/27209
+    manifest.navigationUrls = manifest.navigationUrls || BACKWARDS_COMPATIBILITY_NAVIGATION_URLS;
+
+    // Create `include`/`exclude` RegExps for the `navigationUrls` declared in the manifest.
+    const includeUrls = manifest.navigationUrls.filter(spec => spec.positive);
+    const excludeUrls = manifest.navigationUrls.filter(spec => !spec.positive);
+    this.navigationUrls = {
+      include: includeUrls.map(spec => new RegExp(spec.regex)),
+      exclude: excludeUrls.map(spec => new RegExp(spec.regex)),
+    };
   }
 
   /**
@@ -124,7 +150,7 @@ export class AppVersion implements UpdateSource {
 
       // No response has been found yet. Maybe this group will have one.
       return group.handleFetch(req, context);
-    }, Promise.resolve(null));
+    }, Promise.resolve<Response|null>(null));
 
     // The result of the above is the asset response, if there is any, or null otherwise. Return the
     // asset
@@ -142,7 +168,7 @@ export class AppVersion implements UpdateSource {
       }
 
       return group.handleFetch(req, context);
-    }, Promise.resolve(null));
+    }, Promise.resolve<Response|null>(null));
 
     // If the data caching group returned a response, go with it.
     if (data !== null) {
@@ -151,21 +177,40 @@ export class AppVersion implements UpdateSource {
 
     // Next, check if this is a navigation request for a route. Detect circular
     // navigations by checking if the request URL is the same as the index URL.
-    if (isNavigationRequest(req, this.scope.registration.scope, this.adapter) &&
-        req.url !== this.manifest.index) {
+    if (req.url !== this.manifest.index && this.isNavigationRequest(req)) {
       // This was a navigation request. Re-enter `handleFetch` with a request for
       // the URL.
       return this.handleFetch(this.adapter.newRequest(this.manifest.index), context);
     }
+
     return null;
+  }
+
+  /**
+   * Determine whether the request is a navigation request.
+   * Takes into account: Request mode, `Accept` header, `navigationUrls` patterns.
+   */
+  isNavigationRequest(req: Request): boolean {
+    if (req.mode !== 'navigate') {
+      return false;
+    }
+
+    if (!this.acceptsTextHtml(req)) {
+      return false;
+    }
+
+    const urlPrefix = this.scope.registration.scope.replace(/\/$/, '');
+    const url = req.url.startsWith(urlPrefix) ? req.url.substr(urlPrefix.length) : req.url;
+    const urlWithoutQueryOrHash = url.replace(/[?#].*$/, '');
+
+    return this.navigationUrls.include.some(regex => regex.test(urlWithoutQueryOrHash)) &&
+        !this.navigationUrls.exclude.some(regex => regex.test(urlWithoutQueryOrHash));
   }
 
   /**
    * Check this version for a given resource with a particular hash.
    */
   async lookupResourceWithHash(url: string, hash: string): Promise<Response|null> {
-    const req = this.adapter.newRequest(url);
-
     // Verify that this version has the requested resource cached. If not,
     // there's no point in trying.
     if (!this.hashTable.has(url)) {
@@ -174,16 +219,12 @@ export class AppVersion implements UpdateSource {
 
     // Next, check whether the resource has the correct hash. If not, any cached
     // response isn't usable.
-    if (this.hashTable.get(url) ! !== hash) {
+    if (this.hashTable.get(url) !== hash) {
       return null;
     }
 
-    // TODO: no-op context and appropriate contract. Currently this is a violation
-    // of the typings and could cause issues if handleFetch() has side effects. A
-    // better strategy to deal with side effects is needed.
-    // TODO: this could result in network fetches if the response is lazy. Refactor
-    // to avoid them.
-    return this.handleFetch(req, null !);
+    const cacheState = await this.lookupResourceWithoutHash(url);
+    return cacheState && cacheState.response;
   }
 
   /**
@@ -239,4 +280,16 @@ export class AppVersion implements UpdateSource {
    * Get the opaque application data which was provided with the manifest.
    */
   get appData(): Object|null { return this.manifest.appData || null; }
+
+  /**
+   * Check whether a request accepts `text/html` (based on the `Accept` header).
+   */
+  private acceptsTextHtml(req: Request): boolean {
+    const accept = req.headers.get('Accept');
+    if (accept === null) {
+      return false;
+    }
+    const values = accept.split(',');
+    return values.some(value => value.trim().toLowerCase() === 'text/html');
+  }
 }

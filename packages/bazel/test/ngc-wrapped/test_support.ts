@@ -8,7 +8,6 @@
 
 import {runOneBuild} from '@angular/bazel';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as ts from 'typescript';
 
@@ -18,19 +17,20 @@ export interface TestSupport {
   basePath: string;
   runfilesPath: string;
   angularCorePath: string;
+  typesRoots: string;
   writeConfig({
       srcTargetPath, depPaths, pathMapping,
   }: {
     srcTargetPath: string,
     depPaths?: string[],
     pathMapping?: Array<{moduleName: string; path: string;}>,
-  }): void;
+  }): {compilerOptions: ts.CompilerOptions};
   read(fileName: string): string;
   write(fileName: string, content: string): void;
   writeFiles(...mockDirs: {[fileName: string]: string}[]): void;
   shouldExist(fileName: string): void;
   shouldNotExist(fileName: string): void;
-  runOneBuild(): void;
+  runOneBuild(): boolean;
 }
 
 export function setup(
@@ -47,32 +47,43 @@ export function setup(
   const bazelBinPath = path.resolve(basePath, bazelBin);
   fs.mkdirSync(bazelBinPath);
 
-  const angularCorePath = path.resolve(runfilesPath, 'angular_src', 'packages', 'core');
-  const ngFiles = listFilesRecursive(angularCorePath);
-
+  const angularCorePath = path.dirname(require.resolve('angular/packages/core'));
   const tsConfigJsonPath = path.resolve(basePath, tsconfig);
+
+  const emptyTsConfig = ts.readConfigFile(
+      require.resolve('angular/packages/bazel/test/ngc-wrapped/empty/empty_tsconfig.json'), read);
+  const typesRoots = (emptyTsConfig as any).config.compilerOptions.typeRoots[0];
 
   return {
     basePath,
     runfilesPath,
     angularCorePath,
+    typesRoots,
     write,
     read,
     writeFiles,
     writeConfig,
     shouldExist,
     shouldNotExist,
-    runOneBuild: runOneBuildImpl
+    runOneBuild: runOneBuildImpl,
   };
 
   // -----------------
   // helpers
 
+  function mkdirp(dirname: string) {
+    const parent = path.dirname(dirname);
+    if (!fs.existsSync(parent)) {
+      mkdirp(parent);
+    }
+    fs.mkdirSync(dirname);
+  }
+
   function write(fileName: string, content: string) {
     const dir = path.dirname(fileName);
     if (dir != '.') {
       const newDir = path.resolve(basePath, dir);
-      if (!fs.existsSync(newDir)) fs.mkdirSync(newDir);
+      if (!fs.existsSync(newDir)) mkdirp(newDir);
     }
     fs.writeFileSync(path.resolve(basePath, fileName), content, {encoding: 'utf-8'});
   }
@@ -99,7 +110,10 @@ export function setup(
     const files = [...compilationTargetSrc];
 
     depPaths = depPaths.concat([angularCorePath]);
-    pathMapping = pathMapping.concat([{moduleName: '@angular/core', path: angularCorePath}]);
+    pathMapping = pathMapping.concat([
+      {moduleName: '@angular/core', path: angularCorePath},
+      {moduleName: 'angular/packages/core', path: angularCorePath}
+    ]);
 
     for (const depPath of depPaths) {
       files.push(...listFilesRecursive(depPath).filter(f => f.endsWith('.d.ts')));
@@ -108,13 +122,12 @@ export function setup(
     const pathMappingObj = {};
     for (const mapping of pathMapping) {
       pathMappingObj[mapping.moduleName] = [mapping.path];
-      pathMappingObj[path.join(mapping.moduleName, '*')] = [path.join(mapping.path, '*')];
+      pathMappingObj[path.posix.join(mapping.moduleName, '*')] =
+          [path.posix.join(mapping.path, '*')];
     }
 
     const emptyTsConfig = ts.readConfigFile(
-        path.resolve(
-            runfilesPath, 'angular', 'test', 'ngc-wrapped', 'empty', 'empty_tsconfig.json'),
-        read);
+        require.resolve('angular/packages/bazel/test/ngc-wrapped/empty/empty_tsconfig.json'), read);
 
     const tsconfig = createTsConfig({
       defaultTsConfig: emptyTsConfig.config,
@@ -125,6 +138,7 @@ export function setup(
       pathMapping: pathMappingObj,
     });
     write(path.resolve(basePath, tsConfigJsonPath), JSON.stringify(tsconfig, null, 2));
+    return tsconfig;
   }
 
   function shouldExist(fileName: string) {
@@ -142,7 +156,7 @@ export function setup(
   function runOneBuildImpl(): boolean { return runOneBuild(['@' + tsConfigJsonPath]); }
 }
 
-function makeTempDir(baseDir): string {
+function makeTempDir(baseDir: string): string {
   const id = (Math.random() * 1000000).toFixed(0);
   const dir = path.join(baseDir, `tmp.${id}`);
   fs.mkdirSync(dir);

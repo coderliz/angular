@@ -8,7 +8,7 @@
 import {DOMAnimation} from '../../../src/render/web_animations/dom_animation';
 import {WebAnimationsPlayer} from '../../../src/render/web_animations/web_animations_player';
 
-export function main() {
+{
   let element: any;
   let innerPlayer: MockDomAnimation|null = null;
   beforeEach(() => {
@@ -31,24 +31,6 @@ export function main() {
 
       player.play();
       expect(p.log).toEqual(['pause', 'play']);
-    });
-
-    it('should allow an empty set of keyframes with a set of previous styles', () => {
-      const previousKeyframes = [
-        {opacity: 0, offset: 0},
-        {opacity: 1, offset: 1},
-      ];
-
-      const previousPlayer = new WebAnimationsPlayer(element, previousKeyframes, {duration: 1000});
-      previousPlayer.play();
-      previousPlayer.finish();
-      previousPlayer.beforeDestroy();
-
-      const EMPTY_KEYFRAMES: any[] = [];
-      const player =
-          new WebAnimationsPlayer(element, EMPTY_KEYFRAMES, {duration: 1000}, [previousPlayer]);
-      player.play();
-      player.destroy();
     });
 
     it('should not pause the player if created and started before initialized', () => {

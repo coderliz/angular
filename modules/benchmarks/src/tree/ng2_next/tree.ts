@@ -7,10 +7,8 @@
  */
 
 import {NgIf} from '@angular/common';
-import {ComponentFactory, ComponentFactoryResolver, ComponentRef, ErrorHandler, Injector, NgModuleRef, RendererFactory2, RootRenderer, Sanitizer, TemplateRef, ViewContainerRef} from '@angular/core';
-import {ArgumentType, BindingFlags, NodeFlags, ViewDefinition, ViewFlags, anchorDef, createComponentFactory, directiveDef, elementDef, initServicesIfNeeded, textDef, viewDef} from '@angular/core/src/view/index';
-import {DomRendererFactory2} from '@angular/platform-browser/src/dom/dom_renderer';
-import {DomSanitizerImpl, SafeStyle} from '@angular/platform-browser/src/security/dom_sanitization_service';
+import {ComponentFactory, ComponentFactoryResolver, ComponentRef, ErrorHandler, Injector, NgModuleRef, RendererFactory2, Sanitizer, TemplateRef, ViewContainerRef, ɵArgumentType as ArgumentType, ɵBindingFlags as BindingFlags, ɵNodeFlags as NodeFlags, ɵViewDefinition as ViewDefinition, ɵViewFlags as ViewFlags, ɵand as anchorDef, ɵccf as createComponentFactory, ɵdid as directiveDef, ɵeld as elementDef, ɵinitServicesIfNeeded as initServicesIfNeeded, ɵted as textDef, ɵvid as viewDef} from '@angular/core';
+import {SafeStyle, ɵDomRendererFactory2 as DomRendererFactory2, ɵDomSanitizerImpl as DomSanitizerImpl} from '@angular/platform-browser';
 
 import {TreeNode, emptyTree} from '../util';
 
@@ -96,7 +94,7 @@ export class AppModule implements Injector, NgModuleRef<any> {
   constructor() {
     initServicesIfNeeded();
     this.sanitizer = new DomSanitizerImpl(document);
-    this.renderer2 = new DomRendererFactory2(null, null);
+    this.renderer2 = new DomRendererFactory2(null, null, null);
     trustedEmptyColor = this.sanitizer.bypassSecurityTrustStyle('');
     trustedGreyColor = this.sanitizer.bypassSecurityTrustStyle('grey');
     this.componentFactory =
@@ -109,7 +107,6 @@ export class AppModule implements Injector, NgModuleRef<any> {
         return this.renderer2;
       case Sanitizer:
         return this.sanitizer;
-      case RootRenderer:
       case ErrorHandler:
         return null;
       case NgModuleRef:

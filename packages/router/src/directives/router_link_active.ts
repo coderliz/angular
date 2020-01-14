@@ -6,24 +6,22 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {AfterContentInit, ChangeDetectorRef, ContentChildren, Directive, ElementRef, Input, OnChanges, OnDestroy, QueryList, Renderer2, SimpleChanges} from '@angular/core';
-import {Subscription} from 'rxjs/Subscription';
-import {NavigationEnd} from '../events';
+import {AfterContentInit, ContentChildren, Directive, ElementRef, Input, OnChanges, OnDestroy, Optional, QueryList, Renderer2, SimpleChanges} from '@angular/core';
+import {Subscription} from 'rxjs';
+
+import {Event, NavigationEnd} from '../events';
 import {Router} from '../router';
+
 import {RouterLink, RouterLinkWithHref} from './router_link';
 
+
 /**
- * @whatItDoes Lets you add a CSS class to an element when the link's route becomes active.
- *
- * @howToUse
- *
- * ```
- * <a routerLink="/user/bob" routerLinkActive="active-link">Bob</a>
- * ```
  *
  * @description
  *
- * The RouterLinkActive directive lets you add a CSS class to an element when the link's route
+ * Lets you add a CSS class to an element when the link's route becomes active.
+ *
+ * This directive lets you add a CSS class to an element when the link's route
  * becomes active.
  *
  * Consider the following example:
@@ -72,7 +70,7 @@ import {RouterLink, RouterLinkWithHref} from './router_link';
  *
  * @ngModule RouterModule
  *
- * @stable
+ * @publicApi
  */
 @Directive({
   selector: '[routerLinkActive]',
@@ -80,9 +78,12 @@ import {RouterLink, RouterLinkWithHref} from './router_link';
 })
 export class RouterLinkActive implements OnChanges,
     OnDestroy, AfterContentInit {
-  @ContentChildren(RouterLink, {descendants: true}) links: QueryList<RouterLink>;
+  // TODO(issue/24571): remove '!'.
+  @ContentChildren(RouterLink, {descendants: true})
+  links !: QueryList<RouterLink>;
+  // TODO(issue/24571): remove '!'.
   @ContentChildren(RouterLinkWithHref, {descendants: true})
-  linksWithHrefs: QueryList<RouterLinkWithHref>;
+  linksWithHrefs !: QueryList<RouterLinkWithHref>;
 
   private classes: string[] = [];
   private subscription: Subscription;
@@ -92,8 +93,9 @@ export class RouterLinkActive implements OnChanges,
 
   constructor(
       private router: Router, private element: ElementRef, private renderer: Renderer2,
-      private cdr: ChangeDetectorRef) {
-    this.subscription = router.events.subscribe(s => {
+      @Optional() private link?: RouterLink,
+      @Optional() private linkWithHref?: RouterLinkWithHref) {
+    this.subscription = router.events.subscribe((s: Event) => {
       if (s instanceof NavigationEnd) {
         this.update();
       }
@@ -139,7 +141,9 @@ export class RouterLinkActive implements OnChanges,
   }
 
   private hasActiveLinks(): boolean {
-    return this.links.some(this.isLinkActive(this.router)) ||
-        this.linksWithHrefs.some(this.isLinkActive(this.router));
+    const isActiveCheckFn = this.isLinkActive(this.router);
+    return this.link && isActiveCheckFn(this.link) ||
+        this.linkWithHref && isActiveCheckFn(this.linkWithHref) ||
+        this.links.some(isActiveCheckFn) || this.linksWithHrefs.some(isActiveCheckFn);
   }
 }

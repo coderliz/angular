@@ -6,19 +6,20 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {ɵgetDOM as getDOM} from '@angular/common';
 import {Injectable} from '@angular/core';
 import {AsyncTestCompleter, SpyObject, afterEach, beforeEach, beforeEachProviders, describe, expect, inject, it} from '@angular/core/testing/src/testing_internal';
-import {ɵgetDOM as getDOM} from '@angular/platform-browser';
-import {BrowserXhr} from '../../src/backends/browser_xhr';
-import {CookieXSRFStrategy, XHRBackend, XHRConnection} from '../../src/backends/xhr_backend';
-import {BaseRequestOptions, RequestOptions} from '../../src/base_request_options';
-import {BaseResponseOptions, ResponseOptions} from '../../src/base_response_options';
-import {ResponseContentType, ResponseType} from '../../src/enums';
-import {Headers} from '../../src/headers';
-import {XSRFStrategy} from '../../src/interfaces';
-import {Request} from '../../src/static_request';
-import {Response} from '../../src/static_response';
-import {URLSearchParams} from '../../src/url_search_params';
+import {BrowserXhr} from '@angular/http/src/backends/browser_xhr';
+import {CookieXSRFStrategy, XHRBackend, XHRConnection} from '@angular/http/src/backends/xhr_backend';
+import {BaseRequestOptions, RequestOptions} from '@angular/http/src/base_request_options';
+import {BaseResponseOptions, ResponseOptions} from '@angular/http/src/base_response_options';
+import {ResponseContentType, ResponseType} from '@angular/http/src/enums';
+import {Headers} from '@angular/http/src/headers';
+import {XSRFStrategy} from '@angular/http/src/interfaces';
+import {Request} from '@angular/http/src/static_request';
+import {Response} from '@angular/http/src/static_response';
+import {URLSearchParams} from '@angular/http/src/url_search_params';
+import {setCookie} from '@angular/platform-browser/testing/src/browser_util';
 
 let abortSpy: any;
 let sendSpy: any;
@@ -32,14 +33,20 @@ class MockBrowserXHR extends BrowserXhr {
   open: any;
   response: any;
   responseType: string;
-  responseText: string;
+  // TODO(issue/24571): remove '!'.
+  responseText !: string;
   setRequestHeader: any;
   callbacks = new Map<string, Function>();
-  status: number;
-  responseHeaders: string;
-  responseURL: string;
-  statusText: string;
-  withCredentials: boolean;
+  // TODO(issue/24571): remove '!'.
+  status !: number;
+  // TODO(issue/24571): remove '!'.
+  responseHeaders !: string;
+  // TODO(issue/24571): remove '!'.
+  responseURL !: string;
+  // TODO(issue/24571): remove '!'.
+  statusText !: string;
+  // TODO(issue/24571): remove '!'.
+  withCredentials !: boolean;
 
   constructor() {
     super();
@@ -84,7 +91,7 @@ class MockBrowserXHR extends BrowserXhr {
   }
 }
 
-export function main() {
+{
   describe('XHRBackend', () => {
     let backend: XHRBackend;
     let sampleRequest: Request;
@@ -119,12 +126,12 @@ export function main() {
     if (getDOM().supportsCookies()) {
       describe('XSRF support', () => {
         it('sets an XSRF header by default', () => {
-          getDOM().setCookie('XSRF-TOKEN', 'magic XSRF value');
+          setCookie('XSRF-TOKEN', 'magic XSRF value');
           backend.createConnection(sampleRequest);
           expect(sampleRequest.headers.get('X-XSRF-TOKEN')).toBe('magic XSRF value');
         });
         it('should allow overwriting of existing headers', () => {
-          getDOM().setCookie('XSRF-TOKEN', 'magic XSRF value');
+          setCookie('XSRF-TOKEN', 'magic XSRF value');
           sampleRequest.headers.set('X-XSRF-TOKEN', 'already set');
           backend.createConnection(sampleRequest);
           expect(sampleRequest.headers.get('X-XSRF-TOKEN')).toBe('magic XSRF value');
@@ -137,7 +144,7 @@ export function main() {
                               }]);
 
           it('uses the configured names', () => {
-            getDOM().setCookie('my cookie', 'XSRF value');
+            setCookie('my cookie', 'XSRF value');
             backend.createConnection(sampleRequest);
             expect(sampleRequest.headers.get('X-MY-HEADER')).toBe('XSRF value');
           });
@@ -321,7 +328,7 @@ export function main() {
           let newBlob: Blob;
           try {
             newBlob = new Blob(data || [], datatype ? {type: datatype} : {});
-          } catch (e) {
+          } catch {
             const BlobBuilder = (<any>global).BlobBuilder || (<any>global).WebKitBlobBuilder ||
                 (<any>global).MozBlobBuilder || (<any>global).MSBlobBuilder;
             const builder = new BlobBuilder();
@@ -422,7 +429,7 @@ export function main() {
                (res: Response) => {
 
                },
-               errRes => {
+               (errRes: Response) => {
                  expect(errRes.status).toBe(statusCode);
                  async.done();
                });
@@ -444,7 +451,7 @@ export function main() {
                  nextCalled = true;
                  expect(res.status).toBe(statusCode);
                },
-               errRes => { errorCalled = true; },
+               (errRes: Response) => { errorCalled = true; },
                () => {
                  expect(nextCalled).toBe(true);
                  expect(errorCalled).toBe(false);
@@ -461,7 +468,7 @@ export function main() {
            const connection = new XHRConnection(
                sampleRequest, new MockBrowserXHR(), new ResponseOptions({status: statusCode}));
 
-           connection.response.subscribe(res => {
+           connection.response.subscribe((res: Response) => {
              expect(res.ok).toBe(true);
              async.done();
            });
@@ -477,8 +484,8 @@ export function main() {
                sampleRequest, new MockBrowserXHR(), new ResponseOptions({status: statusCode}));
 
            connection.response.subscribe(
-               res => { throw 'should not be called'; },
-               errRes => {
+               (res: Response) => { throw 'should not be called'; },
+               (errRes: Response) => {
                  expect(errRes.ok).toBe(false);
                  async.done();
                });
@@ -497,7 +504,7 @@ export function main() {
 
            connection.response.subscribe(
                (res: Response) => { nextCalled = true; },
-               errRes => {
+               (errRes: Response) => {
                  expect(errRes.status).toBe(statusCode);
                  expect(nextCalled).toBe(false);
                  async.done();
@@ -553,8 +560,8 @@ export function main() {
            connection1.response.subscribe((res: Response) => {
              expect(res.text()).toBe(responseBody);
 
-             connection2.response.subscribe(ress => {
-               expect(ress.text()).toBe(responseBody);
+             connection2.response.subscribe((res: Response) => {
+               expect(res.text()).toBe(responseBody);
                async.done();
              });
              existingXHRs[1].setStatusCode(200);

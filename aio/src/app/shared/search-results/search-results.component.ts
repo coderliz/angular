@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, Output } from '@angular/core';
 import { SearchResult, SearchResults, SearchArea } from 'app/search/interfaces';
 
 /**
@@ -14,7 +14,7 @@ export class SearchResultsComponent implements OnChanges {
    * The results to display
    */
   @Input()
-  searchResults: SearchResults;
+  searchResults: SearchResults | null = null;
 
   /**
    * Emitted when the user selects a search result
@@ -27,7 +27,7 @@ export class SearchResultsComponent implements OnChanges {
   readonly topLevelFolders = ['guide', 'tutorial'];
   searchAreas: SearchArea[] = [];
 
-  ngOnChanges(changes: SimpleChanges) {
+  ngOnChanges() {
     this.searchAreas = this.processSearchResults(this.searchResults);
   }
 
@@ -39,12 +39,12 @@ export class SearchResultsComponent implements OnChanges {
   }
 
   // Map the search results into groups by area
-  private processSearchResults(search: SearchResults) {
+  private processSearchResults(search: SearchResults | null) {
     if (!search) {
       return [];
     }
     this.notFoundMessage = 'No results found.';
-    const searchAreaMap = {};
+    const searchAreaMap: { [key: string]: SearchResult[] } = {};
     search.results.forEach(result => {
       if (!result.title) { return; } // bad data; should fix
       const areaName = this.computeAreaName(result) || this.defaultArea;
@@ -53,12 +53,12 @@ export class SearchResultsComponent implements OnChanges {
     });
     const keys = Object.keys(searchAreaMap).sort((l, r) => l > r ? 1 : -1);
     return keys.map(name => {
-      let pages: SearchResult[] = searchAreaMap[name];
-
-      // Extract the top 5 most relevant results as priorityPages
-      const priorityPages = pages.splice(0, 5);
-      pages = pages.sort(compareResults);
-      return { name, pages, priorityPages };
+      const {priorityPages, pages, deprecated} = splitPages(searchAreaMap[name]);
+      return {
+        name,
+        priorityPages,
+        pages: pages.concat(deprecated),
+      };
     });
   }
 
@@ -70,6 +70,30 @@ export class SearchResultsComponent implements OnChanges {
     const [areaName, rest] = result.path.split('/', 2);
     return rest && areaName;
   }
+}
+
+function splitPages(allPages: SearchResult[]) {
+  const priorityPages: SearchResult[] = [];
+  const pages: SearchResult[] = [];
+  const deprecated: SearchResult[] = [];
+  allPages.forEach(page => {
+    if (page.deprecated) {
+      deprecated.push(page);
+    } else if (priorityPages.length < 5) {
+      priorityPages.push(page);
+    } else {
+      pages.push(page);
+    }
+  });
+  while (priorityPages.length < 5 && pages.length) {
+    priorityPages.push(pages.shift()!);
+  }
+  while (priorityPages.length < 5 && deprecated.length) {
+    priorityPages.push(deprecated.shift()!);
+  }
+  pages.sort(compareResults);
+
+  return { priorityPages, pages, deprecated };
 }
 
 function compareResults(l: SearchResult, r: SearchResult) {

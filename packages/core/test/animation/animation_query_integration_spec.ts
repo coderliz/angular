@@ -8,20 +8,19 @@
 import {AUTO_STYLE, AnimationPlayer, animate, animateChild, group, query, sequence, stagger, state, style, transition, trigger, ɵAnimationGroupPlayer as AnimationGroupPlayer} from '@angular/animations';
 import {AnimationDriver, ɵAnimationEngine} from '@angular/animations/browser';
 import {matchesElement} from '@angular/animations/browser/src/render/shared';
+import {TransitionAnimationPlayer} from '@angular/animations/browser/src/render/transition_animation_engine';
 import {ENTER_CLASSNAME, LEAVE_CLASSNAME} from '@angular/animations/browser/src/util';
 import {MockAnimationDriver, MockAnimationPlayer} from '@angular/animations/browser/testing';
 import {CommonModule} from '@angular/common';
 import {Component, HostBinding, ViewChild} from '@angular/core';
+import {TestBed, fakeAsync, flushMicrotasks} from '@angular/core/testing';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 
 import {HostListener} from '../../src/metadata/directives';
-import {TestBed} from '../../testing';
-import {fakeAsync, flushMicrotasks} from '../../testing/src/fake_async';
 
-
-export function main() {
+(function() {
   // these tests are only mean't to be run within the DOM (for now)
-  if (typeof Element == 'undefined') return;
+  if (isNode) return;
 
   describe('animation query tests', function() {
     function getLog(): MockAnimationPlayer[] {
@@ -261,7 +260,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -339,7 +338,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -405,7 +404,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -485,7 +484,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -560,7 +559,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -612,7 +611,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -671,7 +670,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -724,7 +723,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -781,7 +780,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -833,7 +832,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -895,7 +894,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -941,7 +940,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -993,7 +992,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -1049,12 +1048,13 @@ export function main() {
             ])]
         })
         class Cmp {
-          public items: any[];
+          // TODO(issue/24571): remove '!'.
+          public items !: any[];
         }
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -1129,12 +1129,13 @@ export function main() {
         })
         class Cmp {
              public exp: any;
-             public items: any[];
+             // TODO(issue/24571): remove '!'.
+             public items !: any[];
            }
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -1208,7 +1209,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
            fixture.detectChanges();
@@ -1287,7 +1288,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
            fixture.detectChanges();
@@ -1349,12 +1350,13 @@ export function main() {
         })
         class Cmp {
           public exp: any;
-          public items: any[];
+          // TODO(issue/24571): remove '!'.
+          public items !: any[];
         }
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -1401,12 +1403,13 @@ export function main() {
         })
         class Cmp {
           public exp: any;
-          public items: any[];
+          // TODO(issue/24571): remove '!'.
+          public items !: any[];
         }
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -1463,12 +1466,13 @@ export function main() {
         class Cmp {
           public exp1: any;
           public exp2: any;
-          public items: any[];
+          // TODO(issue/24571): remove '!'.
+          public items !: any[];
         }
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -1532,12 +1536,13 @@ export function main() {
            })
            class Cmp {
              public exp: any;
-             public items: any[];
+             // TODO(issue/24571): remove '!'.
+             public items !: any[];
            }
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -1586,12 +1591,13 @@ export function main() {
           })
           class Cmp {
              public exp: any;
-             public items: any[];
+             // TODO(issue/24571): remove '!'.
+             public items !: any[];
            }
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -1680,7 +1686,7 @@ export function main() {
            class ParentCmp {
              public exp: any;
 
-             @ViewChild('child') public child: any;
+             @ViewChild('child', {static: true}) public child: any;
            }
 
            @Component({
@@ -1698,6 +1704,7 @@ export function main() {
            TestBed.configureTestingModule({declarations: [ParentCmp, ChildCmp]});
            const fixture = TestBed.createComponent(ParentCmp);
            const cmp = fixture.componentInstance;
+
            cmp.child.items = [4, 5, 6];
            fixture.detectChanges();
 
@@ -1849,7 +1856,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -1909,7 +1916,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -1979,7 +1986,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -2032,7 +2039,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -2102,7 +2109,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -2155,7 +2162,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -2207,7 +2214,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
 
@@ -2354,7 +2361,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [ParentCmp, ChildCmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(ParentCmp);
            const cmp = fixture.componentInstance;
 
@@ -2469,12 +2476,13 @@ export function main() {
           `
            })
            class Cmp {
-             public exp: boolean;
+             // TODO(issue/24571): remove '!'.
+             public exp !: boolean;
            }
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
            const container = fixture.elementRef.nativeElement;
@@ -2561,7 +2569,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [Cmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(Cmp);
         const cmp = fixture.componentInstance;
         cmp.loading = true;
@@ -2648,7 +2656,8 @@ export function main() {
           `
            })
            class Cmp {
-             public exp: boolean;
+             // TODO(issue/24571): remove '!'.
+             public exp !: boolean;
              public log: string[] = [];
              callback(event: any) {
                this.log.push(event.element.getAttribute('data-name') + '-' + event.phaseName);
@@ -2657,7 +2666,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [Cmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(Cmp);
            const cmp = fixture.componentInstance;
 
@@ -2700,7 +2709,7 @@ export function main() {
 
         TestBed.configureTestingModule({declarations: [ParentCmp, ChildCmp]});
 
-        const engine = TestBed.get(ɵAnimationEngine);
+        const engine = TestBed.inject(ɵAnimationEngine);
         const fixture = TestBed.createComponent(ParentCmp);
         fixture.detectChanges();
         engine.flush();
@@ -2720,7 +2729,7 @@ export function main() {
         expect(players.length).toEqual(2);
         expect(engine.players.length).toEqual(1);
 
-        expect(engine.players[0].getRealPlayer()).toBe(players[1]);
+        expect((engine.players[0] as TransitionAnimationPlayer).getRealPlayer()).toBe(players[1]);
       });
 
       it('should fire and synchronize the start/done callbacks on sub triggers even if they are not allowed to animate within the animation',
@@ -2785,7 +2794,7 @@ export function main() {
            }
 
            TestBed.configureTestingModule({declarations: [ParentCmp, ChildCmp]});
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(ParentCmp);
            fixture.detectChanges();
            flushMicrotasks();
@@ -2823,6 +2832,96 @@ export function main() {
            expect(child.log).toEqual(['child-start', 'child-done']);
          }));
 
+      it('should fire and synchronize the start/done callbacks on multiple blocked sub triggers',
+         fakeAsync(() => {
+           @Component({
+             selector: 'cmp',
+             animations: [
+               trigger(
+                   'parent1',
+                   [
+                     transition(
+                         '* => go, * => go-again',
+                         [
+                           style({opacity: 0}),
+                           animate('1s', style({opacity: 1})),
+                         ]),
+                   ]),
+               trigger(
+                   'parent2',
+                   [
+                     transition(
+                         '* => go, * => go-again',
+                         [
+                           style({lineHeight: '0px'}),
+                           animate('1s', style({lineHeight: '10px'})),
+                         ]),
+                   ]),
+               trigger(
+                   'child1',
+                   [
+                     transition(
+                         '* => go, * => go-again',
+                         [
+                           style({width: '0px'}),
+                           animate('1s', style({width: '100px'})),
+                         ]),
+                   ]),
+               trigger(
+                   'child2',
+                   [
+                     transition(
+                         '* => go, * => go-again',
+                         [
+                           style({height: '0px'}),
+                           animate('1s', style({height: '100px'})),
+                         ]),
+                   ]),
+             ],
+             template: `
+               <div [@parent1]="parent1Exp" (@parent1.start)="track($event)"
+                    [@parent2]="parent2Exp" (@parent2.start)="track($event)">
+                 <div [@child1]="child1Exp" (@child1.start)="track($event)"
+                      [@child2]="child2Exp" (@child2.start)="track($event)"></div>
+               </div>
+          `
+           })
+           class Cmp {
+             public parent1Exp = '';
+             public parent2Exp = '';
+             public child1Exp = '';
+             public child2Exp = '';
+             public log: string[] = [];
+
+             track(event: any) { this.log.push(`${event.triggerName}-${event.phaseName}`); }
+           }
+
+           TestBed.configureTestingModule({declarations: [Cmp]});
+           const engine = TestBed.inject(ɵAnimationEngine);
+           const fixture = TestBed.createComponent(Cmp);
+           fixture.detectChanges();
+           flushMicrotasks();
+
+           const cmp = fixture.componentInstance;
+           cmp.log = [];
+           cmp.parent1Exp = 'go';
+           cmp.parent2Exp = 'go';
+           cmp.child1Exp = 'go';
+           cmp.child2Exp = 'go';
+           fixture.detectChanges();
+           flushMicrotasks();
+
+           expect(cmp.log).toEqual(
+               ['parent1-start', 'parent2-start', 'child1-start', 'child2-start']);
+
+           cmp.parent1Exp = 'go-again';
+           cmp.parent2Exp = 'go-again';
+           cmp.child1Exp = 'go-again';
+           cmp.child2Exp = 'go-again';
+           fixture.detectChanges();
+           flushMicrotasks();
+         }));
+
       it('should stretch the starting keyframe of a child animation queries are issued by the parent',
          () => {
            @Component({
@@ -2854,7 +2953,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [ParentCmp, ChildCmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(ParentCmp);
            fixture.detectChanges();
            engine.flush();
@@ -2869,7 +2968,8 @@ export function main() {
            engine.flush();
 
            expect(engine.players.length).toEqual(1);  // child player, parent cover, parent player
-           const groupPlayer = engine.players[0].getRealPlayer() as AnimationGroupPlayer;
+           const groupPlayer = (engine.players[0] as TransitionAnimationPlayer)
+                                   .getRealPlayer() as AnimationGroupPlayer;
            const childPlayer = groupPlayer.players.find(player => {
              if (player instanceof MockAnimationPlayer) {
                return matchesElement(player.element, '.child');
@@ -2946,7 +3046,7 @@ export function main() {
 
            TestBed.configureTestingModule({declarations: [ParentCmp, ChildCmp, GrandChildCmp]});
 
-           const engine = TestBed.get(ɵAnimationEngine);
+           const engine = TestBed.inject(ɵAnimationEngine);
            const fixture = TestBed.createComponent(ParentCmp);
            fixture.detectChanges();
            engine.flush();
@@ -3210,7 +3310,7 @@ export function main() {
       });
     });
   });
-}
+})();
 
 function cancelAllPlayers(players: AnimationPlayer[]) {
   players.forEach(p => p.destroy());

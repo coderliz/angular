@@ -58,6 +58,7 @@ export class TypeCheckCompiler {
 
 interface GuardExpression {
   guard: StaticSymbol;
+  useIf: boolean;
   expression: Expression;
 }
 
@@ -78,6 +79,7 @@ interface Expression {
 const DYNAMIC_VAR_NAME = '_any';
 
 class TypeCheckLocalResolver implements LocalResolver {
+  notifyImplicitReceiverUse(): void {}
   getLocal(name: string): o.Expression|null {
     if (name === EventHandlerVars.event.name) {
       // References to the event should not be type-checked.
@@ -127,8 +129,12 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
       for (let input of directive.inputs) {
         const guard = directive.directive.guards[input.directiveName];
         if (guard) {
-          result.push(
-              {guard, expression: {context: this.component, value: input.value} as Expression});
+          const useIf = guard === 'UseIf';
+          result.push({
+            guard,
+            useIf,
+            expression: {context: this.component, value: input.value} as Expression
+          });
         }
       }
     }
@@ -178,8 +184,9 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
             nameResolver, o.variable(this.getOutputVar(context)), value, bindingId,
             BindingForm.TrySimple);
         if (stmts.length == 0) {
-          const callGuard = this.ctx.importExpr(guard.guard).callFn([currValExpr]);
-          guardExpression = guardExpression ? guardExpression.and(callGuard) : callGuard;
+          const guardClause =
+              guard.useIf ? currValExpr : this.ctx.importExpr(guard.guard).callFn([currValExpr]);
+          guardExpression = guardExpression ? guardExpression.and(guardClause) : guardClause;
         }
       }
       if (guardExpression) {
@@ -278,6 +285,7 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
     }
   }
 
+  notifyImplicitReceiverUse(): void {}
   getLocal(name: string): o.Expression|null {
     if (name == EventHandlerVars.event.name) {
       return o.variable(this.getOutputVar(o.BuiltinTypeName.Dynamic));

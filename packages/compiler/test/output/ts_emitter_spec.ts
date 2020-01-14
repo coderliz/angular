@@ -10,6 +10,8 @@ import {StaticSymbol} from '@angular/compiler/src/aot/static_symbol';
 import * as o from '@angular/compiler/src/output/output_ast';
 import {TypeScriptEmitter} from '@angular/compiler/src/output/ts_emitter';
 import {ParseLocation, ParseSourceFile, ParseSourceSpan} from '@angular/compiler/src/parse_util';
+import {newArray} from '@angular/compiler/src/util';
+
 import {stripSourceMapAndNewLine} from './abstract_emitter_spec';
 
 const someGenFilePath = 'somePackage/someGenFile';
@@ -19,7 +21,7 @@ const sameModuleIdentifier = new o.ExternalReference(null, 'someLocalId', null);
 
 const externalModuleIdentifier = new o.ExternalReference(anotherModuleUrl, 'someExternalId', null);
 
-export function main() {
+{
   // Not supported features of our OutputAst in TS:
   // - real `const` like in Dart
   // - final fields
@@ -160,7 +162,7 @@ export function main() {
     });
 
     it('should break expressions into multiple lines if they are too long', () => {
-      const values: o.Expression[] = new Array(100);
+      const values: o.Expression[] = newArray(100);
       values.fill(o.literal(1));
       values.splice(50, 0, o.fn([], [new o.ReturnStatement(o.literal(1))]));
       expect(emitStmt(o.variable('fn').callFn(values).toStmt())).toEqual([
@@ -245,6 +247,13 @@ export function main() {
       expect(emitStmt(new o.IfStmt(o.variable('cond'), [trueCase], [falseCase]))).toEqual([
         'if (cond) {', '  trueCase();', '} else {', '  falseCase();', '}'
       ].join('\n'));
+    });
+
+    it('should support localized strings', () => {
+      expect(emitStmt(new o.ExpressionStatement(o.localizedString(
+                 {}, ['ab\\:c', 'd"e\'f'], ['ph1'],
+                 [o.literal(7, o.NUMBER_TYPE).plus(o.literal(8, o.NUMBER_TYPE))]))))
+          .toEqual('$localize `ab\\\\:c${(7 + 8)}:ph1:d"e\'f`;');
     });
 
     it('should support try/catch', () => {
@@ -414,10 +423,38 @@ export function main() {
           .toEqual('var a:{[key: string]:number} = (null as any);');
     });
 
-    it('should support a preamble', () => {
-      expect(emitStmt(o.variable('a').toStmt(), '/* SomePreamble */')).toBe([
-        '/* SomePreamble */', 'a;'
-      ].join('\n'));
+    describe('comments', () => {
+      it('should support a preamble', () => {
+        expect(emitStmt(o.variable('a').toStmt(), '/* SomePreamble */')).toBe([
+          '/* SomePreamble */', 'a;'
+        ].join('\n'));
+      });
+
+      it('should support singleline comments', () => {
+        expect(emitStmt(new o.CommentStmt('Simple comment'))).toBe('// Simple comment');
+      });
+
+      it('should support multiline comments', () => {
+        expect(emitStmt(new o.CommentStmt('Multiline comment', true)))
+            .toBe('/* Multiline comment */');
+        expect(emitStmt(new o.CommentStmt(`Multiline\ncomment`, true)))
+            .toBe(`/* Multiline\ncomment */`);
+      });
+
+      it('should support JSDoc comments', () => {
+        expect(emitStmt(new o.JSDocCommentStmt([{text: 'Intro comment'}])))
+            .toBe(`/**\n * Intro comment\n */`);
+        expect(emitStmt(new o.JSDocCommentStmt([
+          {tagName: o.JSDocTagName.Desc, text: 'description'}
+        ]))).toBe(`/**\n * @desc description\n */`);
+        expect(emitStmt(new o.JSDocCommentStmt([
+          {text: 'Intro comment'},
+          {tagName: o.JSDocTagName.Desc, text: 'description'},
+          {tagName: o.JSDocTagName.Id, text: '{number} identifier 123'},
+        ])))
+            .toBe(
+                `/**\n * Intro comment\n * @desc description\n * @id {number} identifier 123\n */`);
+      });
     });
 
     describe('emitter context', () => {

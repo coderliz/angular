@@ -26,7 +26,7 @@ const SELF_TOKEN_REGEX = new RegExp(`\s*${SELF_TOKEN}\s*,?`, 'g');
  *
  * 1. Overlap of animations
  * Given that a CSS property cannot be animated in more than one place at the same time, it's
- * important that this behaviour is detected and validated. The way in which this occurs is that
+ * important that this behavior is detected and validated. The way in which this occurs is that
  * each time a style property is examined, a string-map containing the property will be updated with
  * the start and end times for when the property is used within an animation step.
  *
@@ -96,7 +96,7 @@ export class AnimationAstBuilderVisitor implements AnimationDslVisitor {
       if (def.type == AnimationMetadataType.State) {
         const stateDef = def as AnimationStateMetadata;
         const name = stateDef.name;
-        name.split(/\s*,\s*/).forEach(n => {
+        name.toString().split(/\s*,\s*/).forEach(n => {
           stateDef.name = n;
           states.push(this.visitState(stateDef, context));
         });
@@ -244,12 +244,12 @@ export class AnimationAstBuilderVisitor implements AnimationDslVisitor {
       (metadata.styles as(ɵStyleData | string)[]).forEach(styleTuple => {
         if (typeof styleTuple == 'string') {
           if (styleTuple == AUTO_STYLE) {
-            styles.push(styleTuple as string);
+            styles.push(styleTuple);
           } else {
             context.errors.push(`The provided style string value ${styleTuple} is not allowed.`);
           }
         } else {
-          styles.push(styleTuple as ɵStyleData);
+          styles.push(styleTuple);
         }
       });
     } else {
@@ -518,7 +518,7 @@ function consumeOffset(styles: ɵStyleData | string | (ɵStyleData | string)[]):
       }
     });
   } else if (isObject(styles) && styles.hasOwnProperty('offset')) {
-    const obj = styles as ɵStyleData;
+    const obj = styles;
     offset = parseFloat(obj['offset'] as string);
     delete obj['offset'];
   }
@@ -534,8 +534,8 @@ function constructTimingAst(value: string | number | AnimateTimings, errors: any
   if (value.hasOwnProperty('duration')) {
     timings = value as AnimateTimings;
   } else if (typeof value == 'number') {
-    const duration = resolveTiming(value as number, errors).duration;
-    return makeTimingAst(duration as number, 0, '');
+    const duration = resolveTiming(value, errors).duration;
+    return makeTimingAst(duration, 0, '');
   }
 
   const strValue = value as string;

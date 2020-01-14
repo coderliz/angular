@@ -7,30 +7,29 @@
  */
 
 import {Inject, Injectable, Optional} from '@angular/core';
-
-
-import {Location} from './location';
 import {APP_BASE_HREF, LocationStrategy} from './location_strategy';
 import {LocationChangeListener, PlatformLocation} from './platform_location';
+import {joinWithSlash, normalizeQueryParams} from './util';
 
 
 
 /**
- * @whatItDoes Use URL hash for storing application location data.
  * @description
- * `HashLocationStrategy` is a {@link LocationStrategy} used to configure the
- * {@link Location} service to represent its state in the
+ * A {@link LocationStrategy} used to configure the {@link Location} service to
+ * represent its state in the
  * [hash fragment](https://en.wikipedia.org/wiki/Uniform_Resource_Locator#Syntax)
  * of the browser's URL.
  *
  * For instance, if you call `location.go('/foo')`, the browser's URL will become
  * `example.com#/foo`.
  *
+ * @usageNotes
+ *
  * ### Example
  *
  * {@example common/location/ts/hash_location_component.ts region='LocationComponent'}
  *
- * @stable
+ * @publicApi
  */
 @Injectable()
 export class HashLocationStrategy extends LocationStrategy {
@@ -61,13 +60,12 @@ export class HashLocationStrategy extends LocationStrategy {
   }
 
   prepareExternalUrl(internal: string): string {
-    const url = Location.joinWithSlash(this._baseHref, internal);
+    const url = joinWithSlash(this._baseHref, internal);
     return url.length > 0 ? ('#' + url) : url;
   }
 
   pushState(state: any, title: string, path: string, queryParams: string) {
-    let url: string|null =
-        this.prepareExternalUrl(path + Location.normalizeQueryParams(queryParams));
+    let url: string|null = this.prepareExternalUrl(path + normalizeQueryParams(queryParams));
     if (url.length == 0) {
       url = this._platformLocation.pathname;
     }
@@ -75,7 +73,7 @@ export class HashLocationStrategy extends LocationStrategy {
   }
 
   replaceState(state: any, title: string, path: string, queryParams: string) {
-    let url = this.prepareExternalUrl(path + Location.normalizeQueryParams(queryParams));
+    let url = this.prepareExternalUrl(path + normalizeQueryParams(queryParams));
     if (url.length == 0) {
       url = this._platformLocation.pathname;
     }

@@ -8,15 +8,18 @@
 
 import {Attribute, ChangeDetectorRef, ComponentFactoryResolver, ComponentRef, Directive, EventEmitter, Injector, OnDestroy, OnInit, Output, ViewContainerRef} from '@angular/core';
 
+import {Data} from '../config';
 import {ChildrenOutletContexts} from '../router_outlet_context';
 import {ActivatedRoute} from '../router_state';
 import {PRIMARY_OUTLET} from '../shared';
 
 /**
- * @whatItDoes Acts as a placeholder that Angular dynamically fills based on the current router
- * state.
+ * @description
  *
- * @howToUse
+ * Acts as a placeholder that Angular dynamically fills based on the current router state.
+ *
+ * Each outlet can have a unique name, determined by the optional `name` attribute.
+ * The name cannot be set or changed dynamically. If not set, default value is "primary".
  *
  * ```
  * <router-outlet></router-outlet>
@@ -24,8 +27,8 @@ import {PRIMARY_OUTLET} from '../shared';
  * <router-outlet name='right'></router-outlet>
  * ```
  *
- * A router outlet will emit an activate event any time a new component is being instantiated,
- * and a deactivate event when it is being destroyed.
+ * A router outlet emits an activate event when a new component is instantiated,
+ * and a deactivate event when a component is destroyed.
  *
  * ```
  * <router-outlet
@@ -34,7 +37,7 @@ import {PRIMARY_OUTLET} from '../shared';
  * ```
  * @ngModule RouterModule
  *
- * @stable
+ * @publicApi
  */
 @Directive({selector: 'router-outlet', exportAs: 'outlet'})
 export class RouterOutlet implements OnDestroy, OnInit {
@@ -84,7 +87,7 @@ export class RouterOutlet implements OnDestroy, OnInit {
     return this._activatedRoute as ActivatedRoute;
   }
 
-  get activatedRouteData() {
+  get activatedRouteData(): Data {
     if (this._activatedRoute) {
       return this._activatedRoute.snapshot.data;
     }

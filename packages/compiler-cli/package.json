@@ -5,18 +5,30 @@
   "main": "index.js",
   "typings": "index.d.ts",
   "bin": {
+    "ivy-ngcc": "./ngcc/main-ivy-ngcc.js",
+    "ngcc": "./ngcc/main-ngcc.js",
     "ngc": "./src/main.js",
     "ng-xi18n": "./src/extract_i18n.js"
   },
   "dependencies": {
     "reflect-metadata": "^0.1.2",
     "minimist": "^1.2.0",
-    "tsickle": "^0.25.5",
-    "chokidar": "^1.4.2"
+    "canonical-path": "1.0.0",
+    "chokidar": "^2.1.1",
+    "convert-source-map": "^1.5.1",
+    "dependency-graph": "^0.7.2",
+    "magic-string": "^0.25.0",
+    "semver": "^6.3.0",
+    "source-map": "^0.6.1",
+    "yargs": "13.1.0"
   },
   "peerDependencies": {
-    "typescript": ">=2.4.2 <2.6",
-    "@angular/compiler": "0.0.0-PLACEHOLDER"
+    "@angular/compiler": "0.0.0-PLACEHOLDER",
+    "tslib": "^1.10.0",
+    "typescript": ">=3.6 <3.7"
+  },
+  "engines": {
+    "node": ">=8.0"
   },
   "repository": {
     "type": "git",
@@ -26,13 +38,15 @@
     "angular",
     "compiler"
   ],
-  "contributors": [
-    "Tobias Bosch <tbosch@google.com> (https://angular.io/)",
-    "Alex Eagle <alexeagle@google.com> (https://angular.io/)"
-  ],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/angular/angular/issues"
   },
-  "homepage": "https://github.com/angular/angular/tree/master/packages/compiler-cli"
+  "homepage": "https://github.com/angular/angular/tree/master/packages/compiler-cli",
+  "ng-update": {
+    "packageGroup": "NG_UPDATE_PACKAGE_GROUP"
+  },
+  "publishConfig":{
+    "registry":"https://wombat-dressing-room.appspot.com"
+  }
 }

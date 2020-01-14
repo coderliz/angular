@@ -1,8 +1,8 @@
+load("//tools:defaults.bzl", "ng_module", "ng_package")
+
 package(default_visibility = ["//visibility:public"])
 
-load("@build_bazel_rules_typescript//:defs.bzl", "ts_library")
-
-ts_library(
+ng_module(
     name = "http",
     srcs = glob(
         [
@@ -10,11 +10,34 @@ ts_library(
             "src/**/*.ts",
         ],
     ),
-    module_name = "@angular/http",
-    tsconfig = "//packages:tsconfig",
+    # Disable building with strict compatibility as the http package is no longer
+    # maintained and therefore not needed to be made compatible with --strict.
+    tsconfig = "//packages:tsconfig-build-no-strict",
     deps = [
         "//packages/core",
         "//packages/platform-browser",
-        "@rxjs",
+        "@npm//rxjs",
+    ],
+)
+
+ng_package(
+    name = "npm_package",
+    srcs = [
+        "package.json",
+        "//packages/http/testing:package.json",
+    ],
+    entry_point = ":index.ts",
+    tags = [
+        # Currently the plan for Angular v8 is to exclude @angular/http package from publishing
+        # "release-with-framework",
+    ],
+    # Do not add more to this list.
+    # Dependencies on the full npm_package cause long re-builds.
+    visibility = [
+        "//packages/compiler-cli/integrationtest:__pkg__",
+    ],
+    deps = [
+        ":http",
+        "//packages/http/testing",
     ],
 )

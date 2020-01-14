@@ -6,8 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {addToArray, removeFromArray} from '../util/array_utils';
 import {ElementData, NodeDef, NodeFlags, Services, ViewData, ViewDefinition, ViewState} from './types';
-import {RenderNodeAction, declaredViewContainer, isComponentView, renderNode, visitRootRenderNodes} from './util';
+import {RenderNodeAction, declaredViewContainer, renderNode, visitRootRenderNodes} from './util';
 
 export function attachEmbeddedView(
     parentView: ViewData, elementData: ElementData, viewIndex: number | undefined | null,
@@ -36,7 +37,7 @@ function attachProjectedView(vcElementData: ElementData, view: ViewData) {
   // - add a view to template._projectedViews only 1x throughout its lifetime,
   //   and remove it not until the view is destroyed.
   //   (hard, as when a parent view is attached/detached we would need to attach/detach all
-  //    nested projected views as well, even accross component boundaries).
+  //    nested projected views as well, even across component boundaries).
   // - don't track the insertion order of views in the projected views array
   //   (hard, as when the views of the same template are inserted different view containers)
   view.state |= ViewState.IsProjectedView;
@@ -132,22 +133,4 @@ function renderAttachEmbeddedView(
 
 export function renderDetachView(view: ViewData) {
   visitRootRenderNodes(view, RenderNodeAction.RemoveChild, null, null, undefined);
-}
-
-function addToArray(arr: any[], index: number, value: any) {
-  // perf: array.push is faster than array.splice!
-  if (index >= arr.length) {
-    arr.push(value);
-  } else {
-    arr.splice(index, 0, value);
-  }
-}
-
-function removeFromArray(arr: any[], index: number) {
-  // perf: array.pop is faster than array.splice!
-  if (index >= arr.length - 1) {
-    arr.pop();
-  } else {
-    arr.splice(index, 1);
-  }
 }

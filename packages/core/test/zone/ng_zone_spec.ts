@@ -10,7 +10,7 @@ import {EventEmitter, NgZone} from '@angular/core';
 import {async, fakeAsync, flushMicrotasks} from '@angular/core/testing';
 import {AsyncTestCompleter, Log, beforeEach, describe, expect, inject, it, xit} from '@angular/core/testing/src/testing_internal';
 import {browserDetection} from '@angular/platform-browser/testing/src/browser_util';
-import {scheduleMicroTask} from '../../src/util';
+import {scheduleMicroTask} from '../../src/util/microtask';
 import {NoopNgZone} from '../../src/zone/ng_zone';
 
 const needsLongerTimers = browserDetection.isSlow || browserDetection.isEdge;
@@ -62,9 +62,8 @@ function runNgZoneNoLog(fn: () => any) {
   }
 }
 
-export function main() {
+{
   describe('NgZone', () => {
-
     function createZone(enableLongStackTrace: boolean) {
       return new NgZone({enableLongStackTrace: enableLongStackTrace});
     }
@@ -181,6 +180,36 @@ export function main() {
         ngZone.runGuarded(() => { ngZone.runOutsideAngular(() => { runs = true; }); });
       });
       expect(runs).toBe(true);
+    });
+
+    it('should run with this context and arguments', () => {
+      let runs = false;
+      let applyThisArray: any[] = [];
+      let applyArgsArray: any[] = [];
+      const testContext = {};
+      const testArgs = ['args'];
+      ngZone.run(function(this: any, arg: any) {
+        applyThisArray.push(this);
+        applyArgsArray.push([arg]);
+        ngZone.runGuarded(function(this: any, argGuarded: any) {
+          applyThisArray.push(this);
+          applyArgsArray.push([argGuarded]);
+          ngZone.runOutsideAngular(function(this: any, argOutsideAngular: any) {
+            applyThisArray.push(this);
+            applyArgsArray.push([argOutsideAngular]);
+            runs = true;
+          });
+        }, this, [arg]);
+      }, testContext, testArgs);
+      expect(runs).toBe(true);
+      expect(applyThisArray.length).toBe(3);
+      expect(applyArgsArray.length).toBe(3);
+      expect(applyThisArray[0]).toBe(testContext);
+      expect(applyThisArray[1]).toBe(testContext);
+      expect(applyThisArray[2]).not.toBe(testContext);
+      expect(applyArgsArray[0]).toEqual(testArgs);
+      expect(applyArgsArray[1]).toEqual(testArgs);
+      expect(applyArgsArray[2]).toEqual([undefined]);
     });
 
     it('should have EventEmitter instances', () => {

@@ -1,4 +1,11 @@
-load("@angular//:index.bzl", "ng_module")
+package(default_visibility = ["//visibility:public"])
+
+load("@npm_angular_bazel//:index.bzl", "ng_module")
+load("@npm//http-server:index.bzl", "http_server")
+load("@build_bazel_rules_nodejs//internal/web_package:web_package.bzl", "web_package")
+load("@npm_bazel_rollup//:index.bzl", "rollup_bundle")
+load("@npm_bazel_terser//:index.bzl", "terser_minified")
+load("@npm_bazel_typescript//:index.bzl", "ts_devserver")
 
 # Allow targets under sub-packages to reference the tsconfig.json file
 exports_files(["tsconfig.json"])
@@ -6,6 +13,69 @@ exports_files(["tsconfig.json"])
 ng_module(
     name = "src",
     srcs = glob(["*.ts"]),
-    tsconfig = ":tsconfig.json",
-    deps = ["//src/hello-world"],
+    generate_ve_shims = True,
+    deps = [
+        "//src/hello-world",
+        "@npm//@angular/common",
+        "@npm//@angular/core",
+        "@npm//@angular/platform-browser",
+        "@npm//@angular/router",
+        "@npm//@types",
+        "@npm//rxjs",
+    ],
+)
+
+filegroup(
+    name = "rxjs_umd_modules",
+    srcs = [
+        # do not sort
+        "@npm//:node_modules/rxjs/bundles/rxjs.umd.js",
+        ":rxjs_shims.js",
+    ],
+)
+
+ts_devserver(
+    name = "devserver",
+    entry_module = "bazel_integration_test/src/main",
+    index_html = "index.html",
+    scripts = [
+        ":rxjs_umd_modules",
+    ],
+    serving_path = "/bundle.min.js",
+    static_files = [
+        "@npm//:node_modules/zone.js/dist/zone.min.js",
+    ],
+    deps = ["//src"],
+)
+
+rollup_bundle(
+    name = "bundle",
+    config_file = "rollup.config.js",
+    entry_point = ":main.ts",
+    deps = [
+        "//src",
+        "@npm//rollup-plugin-commonjs",
+        "@npm//rollup-plugin-node-resolve",
+    ],
+)
+
+terser_minified(
+    name = "bundle.min",
+    src = ":bundle",
+)
+
+web_package(
+    name = "prodapp",
+    assets = [
+        # do not sort
+        "@npm//:node_modules/zone.js/dist/zone.min.js",
+        ":bundle.min",
+    ],
+    index_html = "index.html",
+)
+
+http_server(
+    name = "prodserver",
+    data = [":prodapp"],
+    templated_args = ["src/prodapp"],
 )

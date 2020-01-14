@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {CompileDirectiveMetadata, CompilePipeSummary, rendererTypeName, tokenReference, viewClassName} from '../compile_metadata';
+import {CompileDirectiveMetadata, CompilePipeSummary, CompileQueryMetadata, rendererTypeName, tokenReference, viewClassName} from '../compile_metadata';
 import {CompileReflector} from '../compile_reflector';
 import {BindingForm, BuiltinConverter, EventHandlerVars, LocalResolver, convertActionBinding, convertPropertyBinding, convertPropertyBindingBuiltins} from '../compiler_util/expression_converter';
 import {ArgumentType, BindingFlags, ChangeDetectionStrategy, NodeFlags, QueryBindingType, QueryValueType, ViewFlags} from '../core';
@@ -37,7 +37,6 @@ export class ViewCompiler {
       outputCtx: OutputContext, component: CompileDirectiveMetadata, template: TemplateAst[],
       styles: o.Expression, usedPipes: CompilePipeSummary[]): ViewCompileResult {
     let embeddedViewCount = 0;
-    const staticQueryIds = findStaticQueryIds(template);
 
     let renderComponentVarName: string = undefined !;
     if (!component.isHost) {
@@ -66,7 +65,7 @@ export class ViewCompiler {
       const embeddedViewIndex = embeddedViewCount++;
       return new ViewBuilder(
           this._reflector, outputCtx, parent, component, embeddedViewIndex, usedPipes,
-          staticQueryIds, viewBuilderFactory);
+          viewBuilderFactory);
     };
 
     const visitor = viewBuilderFactory(null);
@@ -116,7 +115,6 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
       private reflector: CompileReflector, private outputCtx: OutputContext,
       private parent: ViewBuilder|null, private component: CompileDirectiveMetadata,
       private embeddedViewIndex: number, private usedPipes: CompilePipeSummary[],
-      private staticQueryIds: Map<TemplateAst, StaticAndDynamicQueryIds>,
       private viewBuilderFactory: ViewBuilderFactory) {
     // TODO(tbosch): The old view compiler used to use an `any` type
     // for the context in any embedded view. We keep this behaivor for now
@@ -139,13 +137,11 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
     }
 
     if (!this.parent) {
-      const queryIds = staticViewQueryIds(this.staticQueryIds);
       this.component.viewQueries.forEach((query, queryIndex) => {
         // Note: queries start with id 1 so we can use the number in a Bloom filter!
         const queryId = queryIndex + 1;
         const bindingType = query.first ? QueryBindingType.First : QueryBindingType.All;
-        const flags =
-            NodeFlags.TypeViewQuery | calcStaticDynamicQueryFlags(queryIds, queryId, query.first);
+        const flags = NodeFlags.TypeViewQuery | calcStaticDynamicQueryFlags(query);
         this.nodes.push(() => ({
                           sourceSpan: null,
                           nodeFlags: flags,
@@ -412,19 +408,16 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
     const hostEvents: {context: o.Expression, eventAst: BoundEventAst, dirAst: DirectiveAst}[] = [];
     this._visitComponentFactoryResolverProvider(ast.directives);
 
-    ast.providers.forEach((providerAst, providerIndex) => {
+    ast.providers.forEach(providerAst => {
       let dirAst: DirectiveAst = undefined !;
-      let dirIndex: number = undefined !;
-      ast.directives.forEach((localDirAst, i) => {
+      ast.directives.forEach(localDirAst => {
         if (localDirAst.directive.type.reference === tokenReference(providerAst.token)) {
           dirAst = localDirAst;
-          dirIndex = i;
         }
       });
       if (dirAst) {
-        const {hostBindings: dirHostBindings, hostEvents: dirHostEvents} = this._visitDirective(
-            providerAst, dirAst, dirIndex, nodeIndex, ast.references, ast.queryMatches, usedEvents,
-            this.staticQueryIds.get(<any>ast) !);
+        const {hostBindings: dirHostBindings, hostEvents: dirHostEvents} =
+            this._visitDirective(providerAst, dirAst, ast.references, ast.queryMatches, usedEvents);
         hostBindings.push(...dirHostBindings);
         hostEvents.push(...dirHostEvents);
       } else {
@@ -479,9 +472,8 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
   }
 
   private _visitDirective(
-      providerAst: ProviderAst, dirAst: DirectiveAst, directiveIndex: number,
-      elementNodeIndex: number, refs: ReferenceAst[], queryMatches: QueryMatch[],
-      usedEvents: Map<string, any>, queryIds: StaticAndDynamicQueryIds): {
+      providerAst: ProviderAst, dirAst: DirectiveAst, refs: ReferenceAst[],
+      queryMatches: QueryMatch[], usedEvents: Map<string, any>): {
     hostBindings:
         {context: o.Expression, inputAst: BoundElementPropertyAst, dirAst: DirectiveAst}[],
     hostEvents: {context: o.Expression, eventAst: BoundEventAst, dirAst: DirectiveAst}[]
@@ -492,8 +484,7 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
 
     dirAst.directive.queries.forEach((query, queryIndex) => {
       const queryId = dirAst.contentQueryStartId + queryIndex;
-      const flags =
-          NodeFlags.TypeContentQuery | calcStaticDynamicQueryFlags(queryIds, queryId, query.first);
+      const flags = NodeFlags.TypeContentQuery | calcStaticDynamicQueryFlags(query);
       const bindingType = query.first ? QueryBindingType.First : QueryBindingType.All;
       this.nodes.push(() => ({
                         sourceSpan: dirAst.sourceSpan,
@@ -619,7 +610,6 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
     tokenExpr: o.Expression,
     sourceSpan: ParseSourceSpan
   }) {
-    const nodeIndex = this.nodes.length;
     // providerDef(
     //   flags: NodeFlags, matchedQueries: [string, QueryValueType][], token:any,
     //   value: any, deps: ([DepFlags, any] | any)[]): NodeDef;
@@ -685,6 +675,12 @@ class ViewBuilder implements TemplateAstVisitor, LocalResolver {
       }
     }
     return null;
+  }
+
+  notifyImplicitReceiverUse(): void {
+    // Not needed in View Engine as View Engine walks through the generated
+    // expressions to figure out if the implicit receiver is used and needs
+    // to be generated as part of the pre-update statements.
   }
 
   private _createLiteralArrayConverter(sourceSpan: ParseSourceSpan, argCount: number):
@@ -940,7 +936,8 @@ function needsAdditionalRootNode(astNodes: TemplateAst[]): boolean {
 
 
 function elementBindingDef(inputAst: BoundElementPropertyAst, dirAst: DirectiveAst): o.Expression {
-  switch (inputAst.type) {
+  const inputType = inputAst.type;
+  switch (inputType) {
     case PropertyBindingType.Attribute:
       return o.literalArr([
         o.literal(BindingFlags.TypeElementAttribute), o.literal(inputAst.name),
@@ -965,6 +962,13 @@ function elementBindingDef(inputAst: BoundElementPropertyAst, dirAst: DirectiveA
       return o.literalArr([
         o.literal(BindingFlags.TypeElementStyle), o.literal(inputAst.name), o.literal(inputAst.unit)
       ]);
+    default:
+      // This default case is not needed by TypeScript compiler, as the switch is exhaustive.
+      // However Closure Compiler does not understand that and reports an error in typed mode.
+      // The `throw new Error` below works around the problem, and the unexpected: never variable
+      // makes sure tsc still checks this code is unreachable.
+      const unexpected: never = inputType;
+      throw new Error(`unexpected ${unexpected}`);
   }
 }
 
@@ -1009,57 +1013,6 @@ function callUnwrapValue(nodeIndex: number, bindingIdx: number, expr: o.Expressi
   ]);
 }
 
-interface StaticAndDynamicQueryIds {
-  staticQueryIds: Set<number>;
-  dynamicQueryIds: Set<number>;
-}
-
-
-function findStaticQueryIds(
-    nodes: TemplateAst[], result = new Map<TemplateAst, StaticAndDynamicQueryIds>()):
-    Map<TemplateAst, StaticAndDynamicQueryIds> {
-  nodes.forEach((node) => {
-    const staticQueryIds = new Set<number>();
-    const dynamicQueryIds = new Set<number>();
-    let queryMatches: QueryMatch[] = undefined !;
-    if (node instanceof ElementAst) {
-      findStaticQueryIds(node.children, result);
-      node.children.forEach((child) => {
-        const childData = result.get(child) !;
-        childData.staticQueryIds.forEach(queryId => staticQueryIds.add(queryId));
-        childData.dynamicQueryIds.forEach(queryId => dynamicQueryIds.add(queryId));
-      });
-      queryMatches = node.queryMatches;
-    } else if (node instanceof EmbeddedTemplateAst) {
-      findStaticQueryIds(node.children, result);
-      node.children.forEach((child) => {
-        const childData = result.get(child) !;
-        childData.staticQueryIds.forEach(queryId => dynamicQueryIds.add(queryId));
-        childData.dynamicQueryIds.forEach(queryId => dynamicQueryIds.add(queryId));
-      });
-      queryMatches = node.queryMatches;
-    }
-    if (queryMatches) {
-      queryMatches.forEach((match) => staticQueryIds.add(match.queryId));
-    }
-    dynamicQueryIds.forEach(queryId => staticQueryIds.delete(queryId));
-    result.set(node, {staticQueryIds, dynamicQueryIds});
-  });
-  return result;
-}
-
-function staticViewQueryIds(nodeStaticQueryIds: Map<TemplateAst, StaticAndDynamicQueryIds>):
-    StaticAndDynamicQueryIds {
-  const staticQueryIds = new Set<number>();
-  const dynamicQueryIds = new Set<number>();
-  Array.from(nodeStaticQueryIds.values()).forEach((entry) => {
-    entry.staticQueryIds.forEach(queryId => staticQueryIds.add(queryId));
-    entry.dynamicQueryIds.forEach(queryId => dynamicQueryIds.add(queryId));
-  });
-  dynamicQueryIds.forEach(queryId => staticQueryIds.delete(queryId));
-  return {staticQueryIds, dynamicQueryIds};
-}
-
 function elementEventNameAndTarget(
     eventAst: BoundEventAst, dirAst: DirectiveAst | null): {name: string, target: string | null} {
   if (eventAst.isAnimation) {
@@ -1072,12 +1025,11 @@ function elementEventNameAndTarget(
   }
 }
 
-function calcStaticDynamicQueryFlags(
-    queryIds: StaticAndDynamicQueryIds, queryId: number, isFirst: boolean) {
+function calcStaticDynamicQueryFlags(query: CompileQueryMetadata) {
   let flags = NodeFlags.None;
-  // Note: We only make queries static that query for a single item.
-  // This is because of backwards compatibility with the old view compiler...
-  if (isFirst && (queryIds.staticQueryIds.has(queryId) || !queryIds.dynamicQueryIds.has(queryId))) {
+  // Note: We only make queries static that query for a single item and the user specifically
+  // set the to be static. This is because of backwards compatibility with the old view compiler...
+  if (query.first && query.static) {
     flags |= NodeFlags.StaticQuery;
   } else {
     flags |= NodeFlags.DynamicQuery;

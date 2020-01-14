@@ -1,4 +1,4 @@
-# Dynamic Forms
+# Dynamic forms
 
 {@a top}
 
@@ -40,11 +40,11 @@ Bootstrap the `AppModule` in `main.ts`.
 
 <code-tabs>
 
-  <code-pane title="app.module.ts" path="dynamic-form/src/app/app.module.ts">
+  <code-pane header="app.module.ts" path="dynamic-form/src/app/app.module.ts">
 
   </code-pane>
 
-  <code-pane title="main.ts" path="dynamic-form/src/main.ts">
+  <code-pane header="main.ts" path="dynamic-form/src/main.ts">
 
   </code-pane>
 
@@ -62,7 +62,7 @@ The _question_ is the most fundamental object in the model.
 The following `QuestionBase` is a fundamental question class.
 
 
-<code-example path="dynamic-form/src/app/question-base.ts" title="src/app/question-base.ts">
+<code-example path="dynamic-form/src/app/question-base.ts" header="src/app/question-base.ts">
 
 </code-example>
 
@@ -77,18 +77,14 @@ appropriate controls dynamically.
 via the `type` property.
 
 
-<code-example path="dynamic-form/src/app/question-textbox.ts" title="src/app/question-textbox.ts" linenums="false">
-
-</code-example>
+<code-example path="dynamic-form/src/app/question-textbox.ts" header="src/app/question-textbox.ts"></code-example>
 
 
 
 `DropdownQuestion` presents a list of choices in a select box.
 
 
-<code-example path="dynamic-form/src/app/question-dropdown.ts" title="src/app/question-dropdown.ts" linenums="false">
-
-</code-example>
+<code-example path="dynamic-form/src/app/question-dropdown.ts" header="src/app/question-dropdown.ts"></code-example>
 
 
 
@@ -97,9 +93,7 @@ In a nutshell, the form group consumes the metadata from the question model and
 allows you to specify default values and validation rules.
 
 
-<code-example path="dynamic-form/src/app/question-control.service.ts" title="src/app/question-control.service.ts" linenums="false">
-
-</code-example>
+<code-example path="dynamic-form/src/app/question-control.service.ts" header="src/app/question-control.service.ts"></code-example>
 
 {@a form-component}
 
@@ -112,11 +106,11 @@ to create components to represent the dynamic form.
 
 <code-tabs>
 
-  <code-pane title="dynamic-form.component.html" path="dynamic-form/src/app/dynamic-form.component.html">
+  <code-pane header="dynamic-form.component.html" path="dynamic-form/src/app/dynamic-form.component.html">
 
   </code-pane>
 
-  <code-pane title="dynamic-form.component.ts" path="dynamic-form/src/app/dynamic-form.component.ts">
+  <code-pane header="dynamic-form.component.ts" path="dynamic-form/src/app/dynamic-form.component.ts">
 
   </code-pane>
 
@@ -124,19 +118,19 @@ to create components to represent the dynamic form.
 
 
 
-It presents a list of questions, each bound to a `<df-question>` component element.
-The `<df-question>` tag matches the `DynamicFormQuestionComponent`,
+It presents a list of questions, each bound to a `<app-question>` component element.
+The `<app-question>` tag matches the `DynamicFormQuestionComponent`,
 the component responsible for rendering the details of each _individual_
 question based on values in the data-bound question object.
 
 
 <code-tabs>
 
-  <code-pane title="dynamic-form-question.component.html" path="dynamic-form/src/app/dynamic-form-question.component.html">
+  <code-pane header="dynamic-form-question.component.html" path="dynamic-form/src/app/dynamic-form-question.component.html">
 
   </code-pane>
 
-  <code-pane title="dynamic-form-question.component.ts" path="dynamic-form/src/app/dynamic-form-question.component.ts">
+  <code-pane header="dynamic-form-question.component.ts" path="dynamic-form/src/app/dynamic-form-question.component.ts">
 
   </code-pane>
 
@@ -148,7 +142,7 @@ Notice this component can present any type of question in your model.
 You only have two types of questions at this point but you can imagine many more.
 The `ngSwitch` determines which type of question to display.
 
-In both components  you're relying on Angular's **formGroup** to connect the template HTML to the
+In both components you're relying on Angular's **formGroup** to connect the template HTML to the
 underlying control objects, populated from the question model with display and validation rules.
 
 `formControlName` and `formGroup` are directives defined in
@@ -169,7 +163,7 @@ directly since you imported `ReactiveFormsModule` from `AppModule`.
  and removing objects from the `questions` array.
 
 
-<code-example path="dynamic-form/src/app/question.service.ts" title="src/app/question.service.ts">
+<code-example path="dynamic-form/src/app/question.service.ts" header="src/app/question.service.ts">
 
 </code-example>
 
@@ -178,7 +172,7 @@ directly since you imported `ReactiveFormsModule` from `AppModule`.
 Finally, display an instance of the form in the `AppComponent` shell.
 
 
-<code-example path="dynamic-form/src/app/app.component.ts" title="app.component.ts">
+<code-example path="dynamic-form/src/app/app.component.ts" header="app.component.ts">
 
 </code-example>
 
@@ -203,10 +197,9 @@ Saving and retrieving the data is an exercise for another time.
 
 The final form looks like this:
 
-<figure>
+<div class="lightbox">
   <img src="generated/images/guide/dynamic-form/dynamic-form.png" alt="Dynamic-Form">
-</figure>
-
+</div>
 
 
 [Back to top](guide/dynamic-form#top)

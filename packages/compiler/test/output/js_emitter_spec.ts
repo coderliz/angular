@@ -9,6 +9,7 @@
 import {StaticSymbol} from '@angular/compiler/src/aot/static_symbol';
 import {JavaScriptEmitter} from '@angular/compiler/src/output/js_emitter';
 import * as o from '@angular/compiler/src/output/output_ast';
+import {newArray} from '@angular/compiler/src/util';
 
 import {stripSourceMapAndNewLine} from './abstract_emitter_spec';
 
@@ -19,7 +20,7 @@ const sameModuleIdentifier = new o.ExternalReference(null, 'someLocalId', null);
 
 const externalModuleIdentifier = new o.ExternalReference(anotherModuleUrl, 'someExternalId', null);
 
-export function main() {
+{
   // Note supported features of our OutputAstin JavaScript / ES5:
   // - types
   // - declaring fields
@@ -108,7 +109,7 @@ export function main() {
     });
 
     it('should break expressions into multiple lines if they are too long', () => {
-      const values: o.Expression[] = new Array(100);
+      const values: o.Expression[] = newArray(100);
       values.fill(o.literal(1));
       values.splice(50, 0, o.fn([], [new o.ReturnStatement(o.literal(1))]));
       expect(emitStmt(o.variable('fn').callFn(values).toStmt())).toEqual([
@@ -197,6 +198,15 @@ export function main() {
       expect(emitStmt(new o.IfStmt(o.variable('cond'), [trueCase], [falseCase]))).toEqual([
         'if (cond) {', '  trueCase();', '} else {', '  falseCase();', '}'
       ].join('\n'));
+    });
+
+    it('should support ES5 localized strings', () => {
+      expect(emitStmt(new o.ExpressionStatement(o.localizedString(
+                 {}, ['ab\\:c', 'd"e\'f'], ['ph1'],
+                 [o.literal(7, o.NUMBER_TYPE).plus(o.literal(8, o.NUMBER_TYPE))]))))
+          .toEqual(
+              String.raw
+              `$localize((this&&this.__makeTemplateObject||function(e,t){return Object.defineProperty?Object.defineProperty(e,"raw",{value:t}):e.raw=t,e})(['ab\\:c', ':ph1:d"e\'f'], ['ab\\\\:c', ':ph1:d"e\'f']), (7 + 8));`);
     });
 
     it('should support try/catch', () => {

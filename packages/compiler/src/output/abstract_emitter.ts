@@ -7,7 +7,6 @@
  */
 
 import {ParseSourceSpan} from '../parse_util';
-
 import * as o from './output_ast';
 import {SourceMapGenerator} from './source_map';
 
@@ -233,10 +232,18 @@ export abstract class AbstractEmitterVisitor implements o.StatementVisitor, o.Ex
     return null;
   }
   visitCommentStmt(stmt: o.CommentStmt, ctx: EmitterVisitorContext): any {
-    const lines = stmt.comment.split('\n');
-    lines.forEach((line) => { ctx.println(stmt, `// ${line}`); });
+    if (stmt.multiline) {
+      ctx.println(stmt, `/* ${stmt.comment} */`);
+    } else {
+      stmt.comment.split('\n').forEach((line) => { ctx.println(stmt, `// ${line}`); });
+    }
     return null;
   }
+  visitJSDocCommentStmt(stmt: o.JSDocCommentStmt, ctx: EmitterVisitorContext) {
+    ctx.println(stmt, `/*${stmt.toString()}*/`);
+    return null;
+  }
+
   abstract visitDeclareVarStmt(stmt: o.DeclareVarStmt, ctx: EmitterVisitorContext): any;
 
   visitWriteVarExpr(expr: o.WriteVarExpr, ctx: EmitterVisitorContext): any {
@@ -304,6 +311,13 @@ export abstract class AbstractEmitterVisitor implements o.StatementVisitor, o.Ex
     ctx.print(expr, `)`);
     return null;
   }
+  visitWrappedNodeExpr(ast: o.WrappedNodeExpr<any>, ctx: EmitterVisitorContext): any {
+    throw new Error('Abstract emitter cannot visit WrappedNodeExpr.');
+  }
+  visitTypeofExpr(expr: o.TypeofExpr, ctx: EmitterVisitorContext): any {
+    ctx.print(expr, 'typeof ');
+    expr.expr.visitExpression(this, ctx);
+  }
   visitReadVarExpr(ast: o.ReadVarExpr, ctx: EmitterVisitorContext): any {
     let varName = ast.name !;
     if (ast.builtin != null) {
@@ -343,6 +357,18 @@ export abstract class AbstractEmitterVisitor implements o.StatementVisitor, o.Ex
     } else {
       ctx.print(ast, `${value}`);
     }
+    return null;
+  }
+
+  visitLocalizedString(ast: o.LocalizedString, ctx: EmitterVisitorContext): any {
+    const head = ast.serializeI18nHead();
+    ctx.print(ast, '$localize `' + head.raw);
+    for (let i = 1; i < ast.messageParts.length; i++) {
+      ctx.print(ast, '${');
+      ast.expressions[i - 1].visitExpression(this, ctx);
+      ctx.print(ast, `}${ast.serializeI18nTemplatePart(i).raw}`);
+    }
+    ctx.print(ast, '`');
     return null;
   }
 
@@ -388,6 +414,9 @@ export abstract class AbstractEmitterVisitor implements o.StatementVisitor, o.Ex
       case o.BinaryOperator.And:
         opStr = '&&';
         break;
+      case o.BinaryOperator.BitwiseAnd:
+        opStr = '&';
+        break;
       case o.BinaryOperator.Or:
         opStr = '||';
         break;
@@ -421,11 +450,11 @@ export abstract class AbstractEmitterVisitor implements o.StatementVisitor, o.Ex
       default:
         throw new Error(`Unknown operator ${ast.operator}`);
     }
-    ctx.print(ast, `(`);
+    if (ast.parens) ctx.print(ast, `(`);
     ast.lhs.visitExpression(this, ctx);
     ctx.print(ast, ` ${opStr} `);
     ast.rhs.visitExpression(this, ctx);
-    ctx.print(ast, `)`);
+    if (ast.parens) ctx.print(ast, `)`);
     return null;
   }
 
