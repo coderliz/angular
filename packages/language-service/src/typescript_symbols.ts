@@ -82,14 +82,16 @@ export function getPipesTable(
 
 class TypeScriptSymbolQuery implements SymbolQuery {
   private typeCache = new Map<BuiltinType, Symbol>();
-  // TODO(issue/24571): remove '!'.
-  private pipesCache !: SymbolTable;
+  private pipesCache: SymbolTable|undefined;
 
   constructor(
       private program: ts.Program, private checker: ts.TypeChecker, private source: ts.SourceFile,
       private fetchPipes: () => SymbolTable) {}
 
-  getTypeKind(symbol: Symbol): BuiltinType { return typeKindOf(this.getTsTypeOf(symbol)); }
+  getTypeKind(symbol: Symbol): BuiltinType {
+    const type = symbol instanceof TypeWrapper ? symbol.tsType : undefined;
+    return typeKindOf(type);
+  }
 
   getBuiltinType(kind: BuiltinType): Symbol {
     let result = this.typeCache.get(kind);
@@ -157,8 +159,8 @@ class TypeScriptSymbolQuery implements SymbolQuery {
     const context: TypeContext = {node: this.source, program: this.program, checker: this.checker};
     const typeSymbol = findClassSymbolInContext(type, context);
     if (typeSymbol) {
-      const contextType = this.getTemplateRefContextType(typeSymbol);
-      if (contextType) return new SymbolWrapper(contextType, context).members();
+      const contextType = this.getTemplateRefContextType(typeSymbol, context);
+      if (contextType) return contextType.members();
     }
   }
 
@@ -186,7 +188,7 @@ class TypeScriptSymbolQuery implements SymbolQuery {
     return spanAt(this.source, line, column);
   }
 
-  private getTemplateRefContextType(typeSymbol: ts.Symbol): ts.Symbol|undefined {
+  private getTemplateRefContextType(typeSymbol: ts.Symbol, context: TypeContext): Symbol|undefined {
     const type = this.checker.getTypeOfSymbolAtLocation(typeSymbol, this.source);
     const constructor = type.symbol && type.symbol.members &&
         getFromSymbolTable(type.symbol.members !, '__constructor');
@@ -196,29 +198,15 @@ class TypeScriptSymbolQuery implements SymbolQuery {
       for (const parameter of constructorDeclaration.parameters) {
         const type = this.checker.getTypeAtLocation(parameter.type !);
         if (type.symbol !.name == 'TemplateRef' && isReferenceType(type)) {
-          const typeReference = type as ts.TypeReference;
-          if (typeReference.typeArguments && typeReference.typeArguments.length === 1) {
-            return typeReference.typeArguments[0].symbol;
+          const typeWrapper = new TypeWrapper(type, context);
+          const typeArguments = typeWrapper.typeArguments();
+          if (typeArguments && typeArguments.length === 1) {
+            return typeArguments[0];
           }
         }
       }
     }
   }
-
-  private getTsTypeOf(symbol: Symbol): ts.Type|undefined {
-    const type = getTypeWrapper(symbol);
-    return type && type.tsType;
-  }
-}
-
-function getTypeWrapper(symbol: Symbol): TypeWrapper|undefined {
-  let type: TypeWrapper|undefined = undefined;
-  if (symbol instanceof TypeWrapper) {
-    type = symbol;
-  } else if (symbol.type instanceof TypeWrapper) {
-    type = symbol.type;
-  }
-  return type;
 }
 
 function typeCallable(type: ts.Type): boolean {
@@ -289,9 +277,8 @@ class TypeWrapper implements Symbol {
     return selectSignature(this.tsType, this.context, types);
   }
 
-  indexed(argument: Symbol, value: any): Symbol|undefined {
-    const type = getTypeWrapper(argument);
-    if (!type) return;
+  indexed(type: Symbol, value: any): Symbol|undefined {
+    if (!(type instanceof TypeWrapper)) return;
 
     const typeKind = typeKindOf(type.tsType);
     switch (typeKind) {
@@ -313,8 +300,11 @@ class TypeWrapper implements Symbol {
   }
 
   typeArguments(): Symbol[]|undefined {
-    // TODO: use checker.getTypeArguments when TS 3.7 lands in the monorepo.
-    const typeArguments: ReadonlyArray<ts.Type> = (this.tsType as any).typeArguments;
+    if (!isReferenceType(this.tsType)) return;
+
+    const typeReference = (this.tsType as ts.TypeReference);
+    let typeArguments: ReadonlyArray<ts.Type>|undefined;
+    typeArguments = this.context.checker.getTypeArguments(typeReference);
     if (!typeArguments) return undefined;
     return typeArguments.map(ta => new TypeWrapper(ta, this.context));
   }
@@ -595,8 +585,7 @@ class PipesTable implements SymbolTable {
 const INDEX_PATTERN = /[\\/]([^\\/]+)[\\/]\1\.d\.ts$/;
 
 class PipeSymbol implements Symbol {
-  // TODO(issue/24571): remove '!'.
-  private _tsType !: ts.Type;
+  private _tsType: ts.Type|undefined;
   public readonly kind: DeclarationKind = 'pipe';
   public readonly language: string = 'typescript';
   public readonly container: Symbol|undefined = undefined;

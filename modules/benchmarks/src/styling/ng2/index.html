@@ -20,12 +20,21 @@
       <option value="5">(5) class="foo" [ngClass]="{bar: boolExp}" (mix of static class and ngClass binding)</option>
       <option value="6">(6) class="foo" [ngStyle]="{width: 10px}" [style.background-color]="exp" (Sierpinski's triangle)
       </option>
+      <option value="7">(7) style="color: red" (static styling)</option>
+      <option value="8">(8) [style.width.px]="widthExp" [style.color]="exp" (style property bindings)
+      </option>
+      <option value="9">(9) style="width: 10px" [style.color]="exp" ((mix of static and class property bindings)
+      </option>
+      <option value="10">(10) [ngStyle]="{width.px: widthExp, color: exp}" (ngStyle with units)
+      </option>
     </select>
 
     <button id="create">create</button>
-    <button id="detectChanges">detect changes</button>
+    <button id="update">update</button>
+    <button id="detect_changes">detect changes</button>
     <button id="destroy">destroy</button>
-    <button id="profile">profile detect changes</button>
+    <button id="profile_update">profile update</button>
+    <button id="profile_detect_changes">profile detect changes</button>
     <button id="modify">modify externally</button>
   </p>
 
